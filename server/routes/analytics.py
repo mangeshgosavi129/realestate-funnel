@@ -20,14 +20,4 @@ def get_analytics(
         AnalyticsModel.organization_id == auth.organization_id
     ).order_by(AnalyticsModel.metric_date.desc()).all()
     
-    if not analytics_records:
-        # Return mock data if nothing in DB
-        return [
-            AnalyticsOut(
-                metric_date=datetime.now() - timedelta(days=i),
-                total_conversations=10 + i,
-                total_messages=50 + (i * 5)
-            ) for i in range(7)
-        ]
-        
     return analytics_records

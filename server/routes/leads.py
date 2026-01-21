@@ -4,7 +4,7 @@ from typing import List
 from server.dependencies import get_db
 from server.dependencies import get_auth_context
 from server.models import Lead
-from server.schemas import LeadOut, LeadUpdate, AuthContext
+from server.schemas import LeadOut, LeadCreate, LeadUpdate, AuthContext
 from uuid import UUID
 
 router = APIRouter()
@@ -15,6 +15,21 @@ def get_leads(
     auth: AuthContext = Depends(get_auth_context)
 ):
     return db.query(Lead).filter(Lead.organization_id == auth.organization_id).all()
+
+@router.post("/", response_model=LeadOut)
+def create_lead(
+    lead: LeadCreate,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context)
+):
+    db_lead = Lead(
+        **lead.model_dump(),
+        organization_id=auth.organization_id
+    )
+    db.add(db_lead)
+    db.commit()
+    db.refresh(db_lead)
+    return db_lead
 
 @router.put("/{lead_id}", response_model=LeadOut)
 def update_lead(

@@ -17,9 +17,9 @@ def get_dashboard_stats(
     total_messages = db.query(Message).filter(Message.organization_id == auth.organization_id).count()
     active_leads = db.query(Lead).filter(Lead.organization_id == auth.organization_id).count()
     
-    # Mock data for complex metrics
-    peak_hours = {"09:00": 10, "12:00": 25, "15:00": 15, "18:00": 30}
-    sentiment_breakdown = {"Positive": 60, "Neutral": 30, "Negative": 10}
+    # Empty metrics instead of mock data
+    peak_hours = {}
+    sentiment_breakdown = {}
     
     return DashboardStatsOut(
         total_conversations=total_conversations,

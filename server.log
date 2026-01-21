@@ -1,0 +1,78 @@
+INFO:     Will watch for changes in these directories: ['/Users/mangeshgosavi/PycharmProjects/GraphSense/Agency/Whatsapp-Bot']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [85261] using StatReload
+INFO:     Started server process [85335]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+🔄 Checking database tables...
+ℹ️ No new tables created. Tables now: ['organizations', 'users', 'ctas', 'templates', 'leads', 'analytics', 'whatsapp_integrations', 'audit_logs', 'conversations', 'followups', 'messages']
+INFO:     127.0.0.1:63011 - "GET /dashboard/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63012 - "GET /leads/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63013 - "POST /ctas/ HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:63014 - "GET /ctas/ HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'test_apis.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [85335]
+INFO:     Started server process [85838]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+🔄 Checking database tables...
+ℹ️ No new tables created. Tables now: ['organizations', 'users', 'ctas', 'templates', 'leads', 'analytics', 'whatsapp_integrations', 'audit_logs', 'conversations', 'followups', 'messages']
+INFO:     127.0.0.1:63044 - "GET /dashboard/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63045 - "GET /leads/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63046 - "POST /ctas/ HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:63047 - "GET /ctas/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63108 - "GET /docs HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'test_apis.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [85838]
+INFO:     Started server process [86228]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+🔄 Checking database tables...
+ℹ️ No new tables created. Tables now: ['organizations', 'users', 'ctas', 'templates', 'leads', 'analytics', 'whatsapp_integrations', 'audit_logs', 'conversations', 'followups', 'messages']
+INFO:     127.0.0.1:63159 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:63160 - "GET /dashboard/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63161 - "GET /leads/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63162 - "GET /conversations/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63163 - "POST /messages/send HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:63164 - "GET /ctas/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63165 - "POST /ctas/ HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:63166 - "GET /templates/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63167 - "POST /templates/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63168 - "PUT /templates/2eca1024-116f-4cb8-bb19-3bb6c811b914 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63169 - "GET /templates/2eca1024-116f-4cb8-bb19-3bb6c811b914/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63170 - "DELETE /templates/2eca1024-116f-4cb8-bb19-3bb6c811b914 HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:63171 - "GET /analytics/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63172 - "GET /settings/whatsapp/status HTTP/1.1" 404 Not Found
+WARNING:  Unsupported upgrade request.
+WARNING:  No supported WebSocket library detected. Please use "pip install 'uvicorn[standard]'", or install 'websockets' or 'wsproto' manually.
+INFO:     127.0.0.1:63173 - "GET /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0NjcxZjI4YS01YjAyLTQ1OTctYjQ3YS05Yzc3MTRlZmEwNTgiLCJvcmdfaWQiOiI5NzRmOTI4OC0zZTA1LTRjMDAtYjczOC1jOWFjMzliYjQxNjkiLCJleHAiOjE3NzE1OTcwMjh9.Mr-Z45bM9TR-hezrrSjMhrpRPR7x-NSy0b7fe_q1Ddw HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63176 - "HEAD /ws HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63179 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63192 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:63193 - "GET /dashboard/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63194 - "GET /leads/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63195 - "GET /conversations/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63196 - "POST /messages/send HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:63197 - "GET /ctas/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63198 - "POST /ctas/ HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:63199 - "GET /templates/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63200 - "POST /templates/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63201 - "PUT /templates/509ed5ec-0929-41d4-8420-46581a98b3f1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63202 - "GET /templates/509ed5ec-0929-41d4-8420-46581a98b3f1/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63203 - "DELETE /templates/509ed5ec-0929-41d4-8420-46581a98b3f1 HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:63204 - "GET /analytics/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63205 - "GET /settings/whatsapp/status HTTP/1.1" 404 Not Found
+WARNING:  Unsupported upgrade request.
+WARNING:  No supported WebSocket library detected. Please use "pip install 'uvicorn[standard]'", or install 'websockets' or 'wsproto' manually.
+INFO:     127.0.0.1:63206 - "GET /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0NjcxZjI4YS01YjAyLTQ1OTctYjQ3YS05Yzc3MTRlZmEwNTgiLCJvcmdfaWQiOiI5NzRmOTI4OC0zZTA1LTRjMDAtYjczOC1jOWFjMzliYjQxNjkiLCJleHAiOjE3NzE1OTcwMjh9.Mr-Z45bM9TR-hezrrSjMhrpRPR7x-NSy0b7fe_q1Ddw HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [86228]
+INFO:     Stopping reloader process [85261]

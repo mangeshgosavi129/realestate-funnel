@@ -255,9 +255,16 @@ class FollowupOut(BaseModel):
     updated_at: Optional[datetime]
 
 
-# ======================================================
+# --------------------
 # Leads
-# ======================================================
+# --------------------
+
+class LeadCreate(BaseModel):
+    name: Optional[str] = None
+    phone: str
+    email: Optional[str] = None
+    company: Optional[str] = None
+
 
 class LeadUpdate(BaseModel):
     name: Optional[str]

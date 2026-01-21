@@ -10,8 +10,7 @@ from server.schemas import (
     SignupJoinOrgRequest, 
     SignupJoinOrgResponse
 )
-from ..security import hash_password, verify_password, create_access_token
-from uuid import UUID
+from server.security import hash_password, verify_password, create_access_token
 
 router = APIRouter()
 

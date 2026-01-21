@@ -8,10 +8,9 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Enum as SQLEnum,
-    JSON,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from server.enums import (
     ConversationStage,
@@ -22,8 +21,7 @@ from server.enums import (
     TemplateStatus,
     MessageFrom,
 )
-
-Base = declarative_base()
+from server.database import Base
 
 # --------------------
 # Core
@@ -53,6 +51,7 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     organization = relationship("Organization", back_populates="users")
+    messages = relationship("Message", back_populates="assigned_user")
 
 # --------------------
 # Inbox / Conversations
@@ -86,19 +85,18 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-
-    organization_id = Column(UUID(as_uuid=True),ForeignKey("organizations.id"),nullable=False)
-    conversation_id = Column(UUID(as_uuid=True),ForeignKey("conversations.id"),nullable=False)
-    
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False)
+    lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id"), nullable=False)
     message_from = Column(SQLEnum(MessageFrom), nullable=False)
-    assigned_user_id = Column(UUID(as_uuid=True),ForeignKey("users.id"),nullable=True)
-    
+    assigned_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     content = Column(Text, nullable=False)
-    status = Column(String(30),nullable=False,default="sent") 
-    created_at = Column(DateTime(timezone=True),server_default=func.now())
+    status = Column(String(30), nullable=False, default="sent")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    conversation = relationship("Conversation",back_populates="messages")
-    assigned_user = relationship("User",back_populates="messages")
+    conversation = relationship("Conversation", back_populates="messages")
+    lead = relationship("Lead", back_populates="messages")
+    assigned_user = relationship("User", back_populates="messages")
 # --------------------
 # CTAs / Actions
 # --------------------
@@ -180,6 +178,7 @@ class Lead(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     conversations = relationship("Conversation", back_populates="lead")
+    messages = relationship("Message", back_populates="lead")
 
 # --------------------
 # Analytics

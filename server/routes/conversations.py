@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from server.dependencies import get_db
@@ -6,11 +6,10 @@ from server.dependencies import get_auth_context
 from server.schemas import (
     ConversationOut, 
     MessageOut, 
-    MessageCreate,
     AuthContext
 )
 from server.models import Conversation, Message
-from server.enums import ConversationMode, MessageFrom
+from server.enums import ConversationMode
 from uuid import UUID
 
 router = APIRouter()
