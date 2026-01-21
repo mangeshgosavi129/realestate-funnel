@@ -332,7 +332,6 @@ class WhatsAppIntegrationCreate(BaseModel):
     verify_token: str
     app_secret: str
     phone_number_id: str
-    business_account_id: str
 
 
 class WhatsAppIntegrationUpdate(BaseModel):
@@ -346,7 +345,6 @@ class WhatsAppIntegrationOut(BaseModel):
     id: UUID
     organization_id: UUID
     phone_number_id: str
-    business_account_id: str
     is_connected: bool
     created_at: datetime
     updated_at: Optional[datetime]

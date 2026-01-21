@@ -211,7 +211,6 @@ class WhatsAppIntegration(Base):
     verify_token = Column(String(255), nullable=False) 
     app_secret = Column(String(255), nullable=False)
     phone_number_id = Column(String(255), nullable=False)
-    business_account_id = Column(String(255), nullable=False)
     is_connected = Column(Boolean, default=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
