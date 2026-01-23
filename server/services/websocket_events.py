@@ -107,23 +107,23 @@ async def handle_event(user_id: UUID, data: Dict[str, Any]):
 # Outbound Emitters
 async def emit_ack(user_id: UUID, event_acknowledged: str):
     envelope = WebSocketEnvelope(event=WSEvents.ACK, payload={"event": event_acknowledged})
-    await manager.send_to_user(user_id, envelope.model_dump())
+    await manager.send_to_user(user_id, envelope.model_dump(mode='json'))
 
 async def emit_error(user_id: UUID, error_message: str):
     envelope = WebSocketEnvelope(event=WSEvents.ERROR, payload={"message": error_message})
-    await manager.send_to_user(user_id, envelope.model_dump())
+    await manager.send_to_user(user_id, envelope.model_dump(mode='json'))
 
 async def emit_conversation_updated(org_id: UUID, conversation: ConversationOut, message: MessageOut | None = None):
     payload = WSConversationUpdated(conversation=conversation, message=message)
-    envelope = WebSocketEnvelope(event=WSEvents.CONVERSATION_UPDATED, payload=payload.model_dump())
-    await manager.broadcast_to_org(org_id, envelope.model_dump())
+    envelope = WebSocketEnvelope(event=WSEvents.CONVERSATION_UPDATED, payload=payload.model_dump(mode='json'))
+    await manager.broadcast_to_org(org_id, envelope.model_dump(mode='json'))
 
 async def emit_action_conversations_flagged(org_id: UUID, cta_id: UUID, conversation_ids: List[UUID]):
     payload = WSActionConversationsFlagged(cta_id=cta_id, conversation_ids=conversation_ids)
-    envelope = WebSocketEnvelope(event=WSEvents.ACTION_CONVERSATIONS_FLAGGED, payload=payload.model_dump())
-    await manager.broadcast_to_org(org_id, envelope.model_dump())
+    envelope = WebSocketEnvelope(event=WSEvents.ACTION_CONVERSATIONS_FLAGGED, payload=payload.model_dump(mode='json'))
+    await manager.broadcast_to_org(org_id, envelope.model_dump(mode='json'))
 
 async def emit_action_human_attention_required(org_id: UUID, conversation_ids: List[UUID]):
     payload = WSActionHumanAttentionRequired(conversation_ids=conversation_ids)
-    envelope = WebSocketEnvelope(event=WSEvents.ACTION_HUMAN_ATTENTION_REQUIRED, payload=payload.model_dump())
-    await manager.broadcast_to_org(org_id, envelope.model_dump())
+    envelope = WebSocketEnvelope(event=WSEvents.ACTION_HUMAN_ATTENTION_REQUIRED, payload=payload.model_dump(mode='json'))
+    await manager.broadcast_to_org(org_id, envelope.model_dump(mode='json'))

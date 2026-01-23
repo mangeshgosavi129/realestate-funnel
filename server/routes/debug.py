@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 import datetime
 
 from server.database import SessionLocal
-from server.models import Organization, Lead, Conversation, Message
+from server.models import Lead, Conversation, Message
 from server.enums import (
     ConversationStage,
     ConversationMode,
@@ -22,11 +22,15 @@ async def debug_send_message():
 
     db: Session = SessionLocal()
 
-    org = db.query(Organization).first()
+    # Get the first lead and use ITS organization (not a random org)
     lead = db.query(Lead).first()
 
-    if not org or not lead:
-        return {"error": "Missing org or lead"}
+    if not lead:
+        return {"error": "No leads found in the database"}
+
+    # Use the lead's organization_id - this is the key fix!
+    org_id = lead.organization_id
+    print(f"🔍 Using lead's organization_id: {org_id}")
 
     conversation = (
         db.query(Conversation)
@@ -36,7 +40,7 @@ async def debug_send_message():
 
     if not conversation:
         conversation = Conversation(
-            organization_id=org.id,
+            organization_id=org_id,
             lead_id=lead.id,
             stage=ConversationStage.GREETING,
             intent_level=IntentLevel.MEDIUM,
@@ -48,7 +52,7 @@ async def debug_send_message():
         db.refresh(conversation)
 
     message = Message(
-        organization_id=org.id,
+        organization_id=org_id,
         conversation_id=conversation.id,
         lead_id=lead.id,
         message_from=MessageFrom.LEAD,
@@ -72,10 +76,10 @@ async def debug_send_message():
         status=message.status,
         created_at=message.created_at,
     )
-    print(f"emitting right now with {org.id} & {payload}")
+    print(f"emitting right now with org_id={org_id} & {payload}")
 
     # Build conversation payload and include the exact message
     conv_out = ConversationOut.model_validate(conversation, from_attributes=True)
-    await emit_conversation_updated(org.id, conv_out, payload)
+    await emit_conversation_updated(org_id, conv_out, payload)
 
-    return {"ok": True, "message_id": str(message.id)}
+    return {"ok": True, "message_id": str(message.id), "org_id": str(org_id)}
