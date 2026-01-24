@@ -106,7 +106,6 @@ def run_analyze(context: PipelineInput) -> Tuple[AnalyzeOutput, int, int]:
     client = OpenAI(
         api_key=config.api_key,
         base_url=config.base_url,
-        timeout=config.timeout,
     )
     
     user_prompt = _build_user_prompt(context)
@@ -120,8 +119,7 @@ def run_analyze(context: PipelineInput) -> Tuple[AnalyzeOutput, int, int]:
                 {"role": "system", "content": ANALYZE_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=config.max_tokens,
-            temperature=config.temperature,
+            # Removed config params per user request
         )
         
         latency_ms = int((time.time() - start_time) * 1000)

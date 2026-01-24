@@ -111,7 +111,6 @@ def run_decision(context: PipelineInput, analysis: AnalyzeOutput) -> Tuple[Decis
     client = OpenAI(
         api_key=config.api_key,
         base_url=config.base_url,
-        timeout=config.timeout,
     )
     
     # Check if mode is human - must escalate
@@ -138,8 +137,7 @@ def run_decision(context: PipelineInput, analysis: AnalyzeOutput) -> Tuple[Decis
                 {"role": "system", "content": DECISION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=config.max_tokens,
-            temperature=config.temperature,
+            # Removed config params per user request
         )
         
         latency_ms = int((time.time() - start_time) * 1000)

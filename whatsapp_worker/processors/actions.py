@@ -74,9 +74,9 @@ def handle_pipeline_result(
         
     elif result.should_escalate:
         # Escalate to human
-        updates["mode"] = ConversationMode.HUMAN.value
-        logger.info(f"Escalating conversation {conversation_id} to human: {result.decision.why}")
-        # TODO: Send WebSocket notification to frontend
+        # updates["mode"] = ConversationMode.HUMAN.value  <-- User requested strict manual takeover
+        logger.info(f"🚩 ACTION REQUIRED: Conversation {conversation_id} flagged for human attention: {result.decision.why}")
+        # TODO: Send WebSocket notification (ACTION_HUMAN_ATTENTION_REQUIRED)
     
     # ========================================
     # Always update rolling summary

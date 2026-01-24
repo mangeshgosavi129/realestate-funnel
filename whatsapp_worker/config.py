@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 current_file_path = Path(__file__).resolve()
 root_dir = current_file_path.parent.parent
-env_path = root_dir / ".env.prod"
+env_path = root_dir / ".env.dev"
 
 if env_path.exists():
     load_dotenv(dotenv_path=env_path, override=True)
@@ -25,7 +25,7 @@ class WhatsAppSendConfig:
         self.SECRET_KEY = os.getenv("SECRET_KEY")
         self.ALGORITHM = os.getenv("ALGORITHM")
 
-        self.INTERNAL_API_BASE_URL = os.getenv("INTERNAL_API_BASE_URL")
+        self.INTERNAL_API_BASE_URL = os.getenv("INTERNAL_API_BASE_URL") or "http://localhost:8000"
         self.INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET") or self.SECRET_KEY
 
 config = WhatsAppSendConfig()

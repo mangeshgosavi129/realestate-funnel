@@ -137,7 +137,6 @@ def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Opti
     client = OpenAI(
         api_key=config.api_key,
         base_url=config.base_url,
-        timeout=config.timeout,
     )
     
     system_prompt = _build_system_prompt(context)
@@ -152,8 +151,7 @@ def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Opti
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=config.max_tokens,
-            temperature=config.temperature,
+            # Removed config params per user request
         )
         
         latency_ms = int((time.time() - start_time) * 1000)

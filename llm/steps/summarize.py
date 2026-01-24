@@ -62,7 +62,6 @@ def run_summarize(
     client = OpenAI(
         api_key=config.api_key,
         base_url=config.base_url,
-        timeout=config.timeout,
     )
     
     # Get updated state from response output if available
@@ -102,7 +101,7 @@ def run_summarize(
         
         output = SummaryOutput(updated_rolling_summary=summary)
         
-        logger.info(f"Summarize step completed: {len(summary)} chars")
+        logger.info(f"Summarize step completed: {len(summary)} chars\n📝 Summary: {summary}")
         
         return output, latency_ms, tokens_used
         

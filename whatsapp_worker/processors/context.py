@@ -106,7 +106,7 @@ def build_pipeline_context(
     context = PipelineInput(
         # Business context
         business_name=organization_name,
-        business_description="",  # TODO: Add from BusinessConfig when implemented
+        business_description="A CRM platform for small businesses that helps them manage leads and automate sales. Key value: save 10 hours/week, starts at $29/mo.",  # Mocked for testing
         
         # Conversation context
         rolling_summary=conversation.get("rolling_summary", ""),

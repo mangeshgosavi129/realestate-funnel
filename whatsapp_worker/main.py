@@ -188,7 +188,7 @@ def process_message(
         conversation_id = UUID(conversation["id"])
         
         # Store incoming message
-        api_client.store_incoming_message(conversation, lead, message_text)
+        api_client.store_incoming_message(conversation_id, lead_id, message_text)
         
         # Refresh conversation data after storing message (timestamps updated)
         conversation = api_client.get_conversation(conversation_id)

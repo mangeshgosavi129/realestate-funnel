@@ -165,6 +165,28 @@ HTL is not a simple chatbot. It's a **digital sales mind** that processes each c
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Technical Implementation Details
+
+### 1. The Distributed Worker Pattern
+The system uses a strict **separation of concerns** between the `server` (state management) and `whatsapp_worker` (business logic).
+
+- **Worker Isolation**: The worker (`whatsapp_worker/`) acts as a "brain" that runs independently. It has **no direct database access**.
+- **Internal API**: The worker interacts with the database exclusively through the `InternalsAPIClient` (`whatsapp_worker/processors/api_client.py`), which calls secured endpoints on the server (`server/routes/internals.py`). This ensures all DB logic remains in the monolithic server while allowing the worker to scale horizontally.
+- **Security**: Internal communications are secured via an `X-Internal-Secret` header.
+
+### 2. The HTL Pipeline (Logic Core)
+The Human Thinking Layer is implemented as a pure-logic library in `llm/`. It is stateless and decoupled from the transport layer (WhatsApp).
+
+- **Context Retrieval**: When a message arrives, the worker constructs a `PipelineInput` object containing the `rolling_summary`, `last_3_messages`, and current `intent_level`.
+- **Latency Optimization**: The `analyze` and `decide` steps are optimized for speed (~200ms) to ensure the `decide` step can determine if an immediate response is even necessary.
+- **Token Efficiency**: The `summarize` step continually compresses the conversation history into a `rolling_summary`. This means the context window for the LLM never grows linearly with conversation length, keeping costs flat and low.
+
+### 3. Asynchronous Data Flow
+1.  **Ingestion**: `whatsapp_receive` is a lightweight buffer. It performs no logic other than signature verification and SQS pushing.
+2.  **Debouncing**: The worker implements a logical debounce (`_message_buffer` in `main.py`) to handle users sending multiple short messages (e.g., "Hi", "Are you available?", "I need help") as a single context block.
+3.  **Reliability**: Failed processing in the worker does not delete the SQS message, allowing for automatic retries via visibility timeouts.
+
+
 ---
 
 ## HTL Pipeline Deep Dive

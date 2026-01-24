@@ -72,6 +72,7 @@ DECISION RULES:
 - intent=high/very_high + question asked: SEND_NOW
 - missing_info blocks progress: SEND_NOW with 1 question
 - mode=human: must be HANDOFF_HUMAN
+- User asks for human/support: HANDOFF_HUMAN
 
 TIMING HEURISTICS:
 - VERY_HIGH intent: 60-120 min followup

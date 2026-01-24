@@ -1,6 +1,8 @@
 import jwt
 from typing import Optional
 from fastapi import Depends, HTTPException, status, Header
+from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 from server.database import SessionLocal
 from server.schemas import AuthContext
 from server.models import User

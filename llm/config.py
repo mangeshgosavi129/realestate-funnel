@@ -13,13 +13,21 @@ class LLMConfig:
     api_key: str
     model: str
     base_url: str
-    max_tokens: int
-    temperature: float
+
+# Ensureenv is loaded if accessed directly
+from pathlib import Path
+from dotenv import load_dotenv
+
+current_file_path = Path(__file__).resolve()
+root_dir = current_file_path.parent.parent
+env_path = root_dir / ".env.dev"
+
+if env_path.exists() and not os.getenv("GROQ_API_KEY"):
+    load_dotenv(dotenv_path=env_path, override=True)
     timeout: int
     
     # Cost optimization
-    max_input_tokens: int  # Limit context size
-    max_retries: int
+    
 
 
 def get_llm_config() -> LLMConfig:
@@ -28,14 +36,9 @@ def get_llm_config() -> LLMConfig:
     Optimized for Groq's fast inference.
     """
     return LLMConfig(
-        api_key=os.getenv("GROQ_API_KEY", ""),
-        model=os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"),  # Fast, capable model
-        base_url=os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1"),
-        max_tokens=int(os.getenv("LLM_MAX_TOKENS", "500")),  # Keep responses concise
-        temperature=float(os.getenv("LLM_TEMPERATURE", "0.3")),  # Low for consistency
-        timeout=int(os.getenv("LLM_TIMEOUT", "30")),
-        max_input_tokens=int(os.getenv("LLM_MAX_INPUT_TOKENS", "2000")),  # Limit context
-        max_retries=int(os.getenv("LLM_MAX_RETRIES", "2")),
+        api_key=os.getenv("GROQ_API_KEY"),
+        model=os.getenv("LLM_MODEL"),
+        base_url=os.getenv("LLM_BASE_URL")
     )
 
 
