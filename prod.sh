@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# Function to kill processes
+kill_processes() {
+    echo "Killing existing processes..."
+    pkill -f "uvicorn server.main:app"
+    pkill -f "python3 -m whatsapp_worker.main"
+    pkill -f "celery -A whatsapp_worker.tasks.celery_app worker"
+    pkill -f "celery -A whatsapp_worker.tasks.celery_app beat"
+    # Note: We are not automatically killing redis-server as it might be a system service
+    echo "Processes killed."
+}
+
+# Check for --kill flag
+if [ "$1" == "--kill" ]; then
+    kill_processes
+    exit 0
+fi
+
+# Activate virtual environment
+if [ -f "./.venv/bin/activate" ]; then
+    source ./.venv/bin/activate
+fi
+
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+echo "------------------------------------------"
+# Start Redis if not running
+if ! pgrep -x "redis-server" > /dev/null; then
+    echo "Starting Redis Server (logs in logs/redis.log)..."
+    # Check if redis-server is in path
+    if command -v redis-server >/dev/null 2>&1; then
+        nohup redis-server > logs/redis.log 2>&1 &
+        # Give it a moment to start
+        sleep 2
+    else
+        echo "WARNING: redis-server not found in PATH. Please install Redis."
+    fi
+else
+    echo "Redis Server is already running."
+fi
+
+echo "Starting FastAPI server on 0.0.0.0:8000 (logs in logs/server.log)..."
+nohup uvicorn server.main:app --reload --host 0.0.0.0 --port 8000 > logs/server.log 2>&1 &
+SERVER_PID=$!
+
+echo "Starting WhatsApp Worker (logs in logs/worker.log)..."
+nohup python3 -m whatsapp_worker.main > logs/worker.log 2>&1 &
+WORKER_PID=$!
+
+# Check if celery is installed
+if command -v celery >/dev/null 2>&1; then
+    echo "Starting Celery Worker (logs in logs/celery_worker.log)..."
+    nohup celery -A whatsapp_worker.tasks.celery_app worker --loglevel=info > logs/celery_worker.log 2>&1 &
+    CELERY_WORKER_PID=$!
+
+    echo "Starting Celery Beat (logs in logs/celery_beat.log)..."
+    nohup celery -A whatsapp_worker.tasks.celery_app beat --loglevel=info > logs/celery_beat.log 2>&1 &
+    CELERY_BEAT_PID=$!
+else
+    echo "WARNING: Celery command not found. Skipping Celery Worker and Beat."
+    CELERY_WORKER_PID="N/A"
+    CELERY_BEAT_PID="N/A"
+fi
+
+echo "------------------------------------------"
+echo "Processes started in background."
+echo "FastAPI Server PID: $SERVER_PID"
+echo "WhatsApp Worker PID: $WORKER_PID"
+echo "Celery Worker PID:  $CELERY_WORKER_PID"
+echo "Celery Beat PID:    $CELERY_BEAT_PID"
+echo "------------------------------------------"
+echo "To stop them, run: ./prod.sh --kill"
