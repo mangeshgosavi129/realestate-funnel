@@ -18,5 +18,6 @@ class ServerConfig:
         self.DATABASE_URL = os.getenv("DATABASE_URL")
         self.SECRET_KEY = os.getenv("SECRET_KEY")
         self.ALGORITHM = os.getenv("ALGORITHM")
+        self.INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET")
 
 config = ServerConfig()

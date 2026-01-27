@@ -11,7 +11,7 @@ from server.security import security
 from uuid import UUID
 
 def require_internal_secret(x_internal_secret: str | None = Header(default=None)) -> None:
-    if not x_internal_secret or x_internal_secret != config.SECRET_KEY:
+    if not x_internal_secret or x_internal_secret != config.INTERNAL_API_SECRET:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
