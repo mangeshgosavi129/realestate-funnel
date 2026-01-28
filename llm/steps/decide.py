@@ -8,7 +8,7 @@ from typing import Tuple
 
 from openai import OpenAI
 
-from llm.config import get_config
+from llm.config import llm_config
 from llm.schemas import PipelineInput, AnalyzeOutput, DecisionOutput
 from llm.prompts import DECISION_SYSTEM_PROMPT, DECISION_USER_TEMPLATE
 from server.enums import ConversationStage, DecisionAction, CTAType
@@ -122,10 +122,9 @@ def run_decision(context: PipelineInput, analysis: AnalyzeOutput) -> Tuple[Decis
     Returns:
         Tuple of (DecisionOutput, latency_ms, tokens_used)
     """
-    config = get_config()
     client = OpenAI(
-        api_key=config.api_key,
-        base_url=config.base_url,
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url,
     )
     
     # Check if mode is human - must escalate
@@ -147,7 +146,7 @@ def run_decision(context: PipelineInput, analysis: AnalyzeOutput) -> Tuple[Decis
     
     try:
         response = client.chat.completions.create(
-            model=config.model,
+            model=llm_config.model,
             messages=[
                 {"role": "system", "content": DECISION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},

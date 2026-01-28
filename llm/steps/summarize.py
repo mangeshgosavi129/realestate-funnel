@@ -8,7 +8,7 @@ from typing import Tuple
 
 from openai import OpenAI
 
-from llm.config import get_config
+from llm.config import llm_config
 from llm.schemas import PipelineInput, SummaryOutput, GenerateOutput
 from llm.prompts import SUMMARIZE_SYSTEM_PROMPT, SUMMARIZE_USER_TEMPLATE
 from server.enums import ConversationStage
@@ -58,10 +58,9 @@ def run_summarize(
     Returns:
         Tuple of (SummaryOutput, latency_ms, tokens_used)
     """
-    config = get_config()
     client = OpenAI(
-        api_key=config.api_key,
-        base_url=config.base_url,
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url,
     )
     
     # Get updated state from response output if available
@@ -82,7 +81,7 @@ def run_summarize(
     
     try:
         response = client.chat.completions.create(
-            model=config.model,
+            model=llm_config.model,
             messages=[
                 {"role": "system", "content": SUMMARIZE_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},

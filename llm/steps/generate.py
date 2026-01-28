@@ -8,7 +8,7 @@ from typing import Tuple, Optional
 
 from openai import OpenAI
 
-from llm.config import get_config
+from llm.config import llm_config
 from llm.schemas import (
     PipelineInput, DecisionOutput, GenerateOutput,
     StatePatch, SelfCheck
@@ -133,10 +133,9 @@ def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Opti
         logger.info(f"Skipping generate: action={decision.action.value}")
         return None, 0, 0
     
-    config = get_config()
     client = OpenAI(
-        api_key=config.api_key,
-        base_url=config.base_url,
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url,
     )
     
     system_prompt = _build_system_prompt(context)
@@ -146,7 +145,7 @@ def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Opti
     
     try:
         response = client.chat.completions.create(
-            model=config.model,
+            model=llm_config.model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

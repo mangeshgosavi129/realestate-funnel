@@ -8,7 +8,7 @@ from typing import Tuple
 
 from openai import OpenAI
 
-from llm.config import get_config
+from llm.config import llm_config
 from llm.schemas import PipelineInput, AnalyzeOutput, RiskFlags, KBRequirement
 from llm.prompts import ANALYZE_SYSTEM_PROMPT, ANALYZE_USER_TEMPLATE
 from server.enums import ConversationStage, RiskLevel
@@ -102,10 +102,9 @@ def run_analyze(context: PipelineInput) -> Tuple[AnalyzeOutput, int, int]:
     Returns:
         Tuple of (AnalyzeOutput, latency_ms, tokens_used)
     """
-    config = get_config()
     client = OpenAI(
-        api_key=config.api_key,
-        base_url=config.base_url,
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url,
     )
     
     user_prompt = _build_user_prompt(context)
