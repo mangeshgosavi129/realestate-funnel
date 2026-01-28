@@ -189,7 +189,7 @@ def only_clean_func():
             "users", "leads", "organizations"
         ]
         table_string = ", ".join(tables)
-        db.execute(f"TRUNCATE TABLE {table_string} CASCADE")
+        db.execute(text(f"TRUNCATE TABLE {table_string} CASCADE"))
         db.commit()
         print("Cleanup complete.")
     except Exception as e:
