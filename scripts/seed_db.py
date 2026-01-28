@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from server.database import SessionLocal, engine, Base
 from server.models import Organization, User, Lead, Conversation, Message, WhatsAppIntegration, CTA
 from server.enums import ConversationStage, IntentLevel, ConversationMode, UserSentiment, MessageFrom
+from server.security import hash_password
 
 def seed_db(clean=False):
     db = SessionLocal()
@@ -44,8 +45,8 @@ def seed_db(clean=False):
         db.flush() # Get IDs
 
         # 2. Users
-        # Standard bcrypt hash for "password123"
-        hashed_pwd = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGGa31lW"
+        password = "password123"
+        hashed_pwd = hash_password(password)
         users_data = [
             ("Admin User", "admin@techsolutions.com"),
             ("Sales Rep 1", "sales1@techsolutions.com"),
