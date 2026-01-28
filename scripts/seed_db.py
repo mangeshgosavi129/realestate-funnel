@@ -133,35 +133,63 @@ def seed_db(clean=False):
                 db.flush()
 
                 # Messages
-                m1 = Message(
-                    id=uuid.uuid4(),
-                    organization_id=org.id,
-                    conversation_id=conv.id,
-                    lead_id=lead.id,
-                    message_from=MessageFrom.LEAD,
-                    content="Hi, I saw your product online.",
-                    status="received"
-                )
-                m2 = Message(
-                    id=uuid.uuid4(),
-                    organization_id=org.id,
-                    conversation_id=conv.id,
-                    lead_id=lead.id,
-                    message_from=MessageFrom.BOT,
-                    content="Hello! Thank you for reaching out. How can I help you today?",
-                    status="sent"
-                )
-                m3 = Message(
-                    id=uuid.uuid4(),
-                    organization_id=org.id,
-                    conversation_id=conv.id,
-                    lead_id=lead.id,
-                    message_from=MessageFrom.HUMAN,
-                    assigned_user_id=users[0].id,
-                    content="Let me check that for you.",
-                    status="sent"
-                )
-                db.add_all([m1, m2, m3])
+                messages = [
+                    Message(
+                        id=uuid.uuid4(),
+                        organization_id=org.id,
+                        conversation_id=conv.id,
+                        lead_id=lead.id,
+                        message_from=MessageFrom.LEAD,
+                        content="Hi, I saw your product online.",
+                        status="received"
+                    ),
+                    Message(
+                        id=uuid.uuid4(),
+                        organization_id=org.id,
+                        conversation_id=conv.id,
+                        lead_id=lead.id,
+                        message_from=MessageFrom.BOT,
+                        content="Hello! Thank you for reaching out. How can I help you today?",
+                        status="sent"
+                    ),
+                    Message(
+                        id=uuid.uuid4(),
+                        organization_id=org.id,
+                        conversation_id=conv.id,
+                        lead_id=lead.id,
+                        message_from=MessageFrom.LEAD,
+                        content="What is the pricing for your basic plan?",
+                        status="received"
+                    ),
+                    Message(
+                        id=uuid.uuid4(),
+                        organization_id=org.id,
+                        conversation_id=conv.id,
+                        lead_id=lead.id,
+                        message_from=MessageFrom.BOT,
+                        content="Our basic plan starts at $29/month. It includes the AI chatbot and basic analytics.",
+                        status="sent"
+                    ),
+                    Message(
+                        id=uuid.uuid4(),
+                        organization_id=org.id,
+                        conversation_id=conv.id,
+                        lead_id=lead.id,
+                        message_from=MessageFrom.LEAD,
+                        content="Does it support WhatsApp integration?",
+                        status="received"
+                    ),
+                     Message(
+                        id=uuid.uuid4(),
+                        organization_id=org.id,
+                        conversation_id=conv.id,
+                        lead_id=lead.id,
+                        message_from=MessageFrom.BOT,
+                        content="Yes, absolutely! WhatsApp integration is one of our core features.",
+                        status="sent"
+                    )
+                ]
+                db.add_all(messages)
 
         db.commit()
         print("Seeding complete successfully!")
