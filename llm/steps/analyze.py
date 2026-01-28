@@ -113,7 +113,7 @@ def run_analyze(context: PipelineInput) -> Tuple[AnalyzeOutput, int, int]:
     
     try:
         response = client.chat.completions.create(
-            model=config.model,
+            model=llm_config.model,
             messages=[
                 {"role": "system", "content": ANALYZE_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
