@@ -73,6 +73,8 @@ class Conversation(Base):
     intent_level = Column(SQLEnum(IntentLevel), nullable=True)
     mode = Column(SQLEnum(ConversationMode), nullable=False)
     user_sentiment = Column(SQLEnum(UserSentiment), nullable=True)
+    needs_human_attention = Column(Boolean, default=False)
+    human_attention_resolved_at = Column(DateTime(timezone=True), nullable=True)
     
     # === Context ===
     rolling_summary = Column(Text, nullable=True)

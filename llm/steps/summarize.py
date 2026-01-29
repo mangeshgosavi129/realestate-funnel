@@ -11,6 +11,7 @@ from openai import OpenAI
 from llm.config import llm_config
 from llm.schemas import PipelineInput, SummaryOutput, GenerateOutput
 from llm.prompts import SUMMARIZE_SYSTEM_PROMPT, SUMMARIZE_USER_TEMPLATE
+from llm.api_helpers import llm_call_with_retry
 from server.enums import ConversationStage
 
 logger = logging.getLogger(__name__)
@@ -103,23 +104,28 @@ def run_summarize(
     )
     
     start_time = time.time()
+    tokens_used = 0
     
-    try:
-        response = client.chat.completions.create(
+    def make_api_call():
+        return client.chat.completions.create(
             model=llm_config.model,
             messages=[
                 {"role": "system", "content": SUMMARIZE_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=300,  # Summaries are short
-            temperature=0.2,  # Very consistent
+            response_format={"type": "json_object"},
+            max_tokens=500,
+            temperature=0.2,
+        )
+    
+    try:
+        data = llm_call_with_retry(
+            api_call=make_api_call,
+            max_retries=2,
+            step_name="Summarize"
         )
         
         latency_ms = int((time.time() - start_time) * 1000)
-        tokens_used = response.usage.total_tokens if response.usage else 0
-        
-        content = response.choices[0].message.content
-        data = _parse_response(content)
         
         summary = data.get("updated_rolling_summary", "")[:500]  # Hard limit
         
@@ -128,10 +134,6 @@ def run_summarize(
         logger.info(f"Summarize step completed: {len(summary)} chars\n📝 Summary: {summary}")
         
         return output, latency_ms, tokens_used
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse Summarize response: {e}")
-        return _get_fallback_output(context, user_message, bot_message), int((time.time() - start_time) * 1000), 0
         
     except Exception as e:
         logger.error(f"Summarize step failed: {e}", exc_info=True)

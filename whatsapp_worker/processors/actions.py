@@ -74,8 +74,11 @@ def handle_pipeline_result(
         
     elif result.should_escalate:
         # Escalate to human
-        # updates["mode"] = ConversationMode.HUMAN.value  <-- User requested strict manual takeover
         logger.info(f"🚩 ACTION REQUIRED: Conversation {conversation_id} flagged for human attention: {result.decision.why}")
+        
+        # Flag persistent attention needed in DB
+        updates["needs_human_attention"] = True
+        
         try:
             api_client.emit_human_attention(
                 conversation_id=conversation_id,

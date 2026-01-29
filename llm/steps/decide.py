@@ -11,6 +11,8 @@ from openai import OpenAI
 from llm.config import llm_config
 from llm.schemas import PipelineInput, AnalyzeOutput, DecisionOutput
 from llm.prompts import DECISION_SYSTEM_PROMPT, DECISION_USER_TEMPLATE
+from llm.utils import normalize_enum
+from llm.api_helpers import llm_call_with_retry
 from server.enums import ConversationStage, DecisionAction, CTAType
 
 logger = logging.getLogger(__name__)
@@ -56,30 +58,28 @@ def _parse_response(content: str) -> dict:
     return json.loads(content)
 
 
-def _validate_and_build_output(data: dict, context: PipelineInput) -> DecisionOutput:
+def _validate_and_build_output(data: dict, context: PipelineInput, analysis: AnalyzeOutput) -> DecisionOutput:
     """Validate and build typed output from raw JSON."""
-    # Map action string to enum
-    action_str = data.get("action", "WAIT_SCHEDULE").upper()
-    try:
-        action = DecisionAction(action_str.lower())
-    except ValueError:
-        action = DecisionAction.WAIT_SCHEDULE
+    # Map action string to enum with fuzzy matching
+    action = normalize_enum(
+        data.get("action"),
+        DecisionAction,
+        DecisionAction.WAIT_SCHEDULE
+    )
     
-    # Map stage string to enum
-    stage_str = data.get("next_stage", context.conversation_stage.value)
-    try:
-        next_stage = ConversationStage(stage_str)
-    except ValueError:
-        next_stage = context.conversation_stage
+    # Map stage string to enum with fuzzy matching
+    next_stage = normalize_enum(
+        data.get("next_stage"),
+        ConversationStage,
+        context.conversation_stage
+    )
     
-    # Map CTA type
-    cta_str = data.get("recommended_cta")
-    recommended_cta = None
-    if cta_str and cta_str != "null":
-        try:
-            recommended_cta = CTAType(cta_str)
-        except ValueError:
-            pass
+    # Map CTA type with fuzzy matching
+    recommended_cta = normalize_enum(
+        data.get("recommended_cta"),
+        CTAType,
+        None
+    )
     
     # Parse CTA scheduling fields
     cta_scheduled_time = data.get("cta_scheduled_time")
@@ -104,7 +104,12 @@ def _validate_and_build_output(data: dict, context: PipelineInput) -> DecisionOu
     return DecisionOutput(
         action=action,
         why=data.get("why", "Decision made")[:150],
-        next_stage=next_stage,
+        next_stage=_apply_stage_override(
+            llm_stage=next_stage, 
+            current_stage=context.conversation_stage, 
+            analyze_stage=analysis.stage_recommendation, 
+            analyze_confidence=analysis.confidence
+        ),
         recommended_cta=recommended_cta,
         cta_scheduled_time=cta_scheduled_time,
         cta_name=cta_name,
@@ -113,6 +118,54 @@ def _validate_and_build_output(data: dict, context: PipelineInput) -> DecisionOu
         kb_used=data.get("kb_used", False),
         template_required=data.get("template_required", False),
     )
+
+
+def _apply_stage_override(
+    llm_stage: ConversationStage,
+    current_stage: ConversationStage,
+    analyze_stage: ConversationStage = None,
+    analyze_confidence: float = 0.0
+) -> ConversationStage:
+    """
+    Apply deterministic stage transition rules.
+    
+    Priority:
+    1. If analyze has high confidence recommendation, trust it
+    2. Never regress to earlier stage (greeting < qualification < pricing < cta)
+    3. LLM suggestion only for forward progression
+    """
+    STAGE_ORDER = {
+        ConversationStage.GREETING: 0,
+        ConversationStage.QUALIFICATION: 1,
+        ConversationStage.PRICING: 2,
+        ConversationStage.CTA: 3,
+        ConversationStage.FOLLOWUP: 3,
+        ConversationStage.CLOSED: 4,
+        ConversationStage.LOST: 4,
+        ConversationStage.GHOSTED: 4,
+    }
+    
+    # If analyze_stage not passed (backward compat), treat as current
+    if analyze_stage is None:
+        analyze_stage = current_stage
+
+    current_order = STAGE_ORDER.get(current_stage, 1)
+    analyze_order = STAGE_ORDER.get(analyze_stage, 1)
+    llm_order = STAGE_ORDER.get(llm_stage, 1)
+    
+    # Rule 1: High-confidence analyzer recommendation overrides LLM if it progresses forward
+    if analyze_confidence >= 0.7 and analyze_order > current_order:
+        logger.info(f"Stage Override: Trusting Analyze ({analyze_stage.value}) over LLM ({llm_stage.value}) due to high confidence")
+        return analyze_stage
+    
+    # Rule 2: Prevent backward regression
+    if llm_order < current_order:
+        # Exceptions logic could go here (e.g. if user says "Wait actually I have a question about X")
+        # For now, strict no-regression
+        logger.warning(f"Stage Regression Blocked: {current_stage.value} -> {llm_stage.value}. Keeping {current_stage.value}")
+        return current_stage
+    
+    return llm_stage
 
 
 def run_decision(context: PipelineInput, analysis: AnalyzeOutput) -> Tuple[DecisionOutput, int, int]:
@@ -143,31 +196,31 @@ def run_decision(context: PipelineInput, analysis: AnalyzeOutput) -> Tuple[Decis
     user_prompt = _build_user_prompt(context, analysis)
     
     start_time = time.time()
+    tokens_used = 0
     
-    try:
-        response = client.chat.completions.create(
+    def make_api_call():
+        return client.chat.completions.create(
             model=llm_config.model,
             messages=[
                 {"role": "system", "content": DECISION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            # Removed config params per user request
+            response_format={"type": "json_object"},  # More reliable than strict schema
+        )
+    
+    try:
+        data = llm_call_with_retry(
+            api_call=make_api_call,
+            max_retries=2,
+            step_name="Decision"
         )
         
         latency_ms = int((time.time() - start_time) * 1000)
-        tokens_used = response.usage.total_tokens if response.usage else 0
-        
-        content = response.choices[0].message.content
-        data = _parse_response(content)
-        output = _validate_and_build_output(data, context)
+        output = _validate_and_build_output(data, context, analysis)
         
         logger.info(f"Decision step completed: action={output.action.value}, stage={output.next_stage.value}")
         
         return output, latency_ms, tokens_used
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse Decision response: {e}")
-        return _get_fallback_output(context, analysis), int((time.time() - start_time) * 1000), 0
         
     except Exception as e:
         logger.error(f"Decision step failed: {e}", exc_info=True)

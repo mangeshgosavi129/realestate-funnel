@@ -68,6 +68,10 @@ def delete_lead(
     if not db_lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     
+    # Manually delete related conversations first to avoid FK constraint violation
+    from server.models import Conversation
+    db.query(Conversation).filter(Conversation.lead_id == lead_id).delete()
+    
     db.delete(db_lead)
     db.commit()
     return None

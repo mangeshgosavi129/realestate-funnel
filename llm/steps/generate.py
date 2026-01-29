@@ -14,6 +14,8 @@ from llm.schemas import (
     StatePatch, SelfCheck
 )
 from llm.prompts import GENERATE_SYSTEM_PROMPT, GENERATE_USER_TEMPLATE
+from llm.utils import normalize_enum
+from llm.api_helpers import llm_call_with_retry
 from server.enums import ConversationStage, IntentLevel, UserSentiment, CTAType, DecisionAction
 
 logger = logging.getLogger(__name__)
@@ -72,28 +74,26 @@ def _parse_response(content: str) -> dict:
 
 def _validate_and_build_output(data: dict, context: PipelineInput, decision: DecisionOutput) -> GenerateOutput:
     """Validate and build typed output from raw JSON."""
-    # Map stage string to enum
-    stage_str = data.get("next_stage", decision.next_stage.value)
-    try:
-        next_stage = ConversationStage(stage_str)
-    except ValueError:
-        next_stage = decision.next_stage
+    # Map stage string to enum with fuzzy matching
+    next_stage = normalize_enum(
+        data.get("next_stage"),
+        ConversationStage,
+        decision.next_stage
+    )
     
-    # Map CTA type
-    cta_str = data.get("cta_type")
-    cta_type = None
-    if cta_str and cta_str != "null":
-        try:
-            cta_type = CTAType(cta_str)
-        except ValueError:
-            pass
+    # Map CTA type with fuzzy matching
+    cta_type = normalize_enum(
+        data.get("cta_type"),
+        CTAType,
+        None
+    )
     
-    # Build state patch
+    # Build state patch with defensive enum parsing
     sp = data.get("state_patch", {})
     state_patch = StatePatch(
-        intent_level=IntentLevel(sp["intent_level"]) if sp.get("intent_level") and sp["intent_level"] != "null" else None,
-        user_sentiment=UserSentiment(sp["user_sentiment"]) if sp.get("user_sentiment") and sp["user_sentiment"] != "null" else None,
-        conversation_stage=ConversationStage(sp["conversation_stage"]) if sp.get("conversation_stage") and sp["conversation_stage"] != "null" else None,
+        intent_level=normalize_enum(sp.get("intent_level"), IntentLevel, None),
+        user_sentiment=normalize_enum(sp.get("user_sentiment"), UserSentiment, None),
+        conversation_stage=normalize_enum(sp.get("conversation_stage"), ConversationStage, None),
     )
     
     # Build self check
@@ -142,22 +142,26 @@ def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Opti
     user_prompt = _build_user_prompt(context, decision)
     
     start_time = time.time()
+    tokens_used = 0
     
-    try:
-        response = client.chat.completions.create(
+    def make_api_call():
+        return client.chat.completions.create(
             model=llm_config.model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            # Removed config params per user request
+            response_format={"type": "json_object"},  # More reliable than strict schema
+        )
+    
+    try:
+        data = llm_call_with_retry(
+            api_call=make_api_call,
+            max_retries=2,
+            step_name="Generate"
         )
         
         latency_ms = int((time.time() - start_time) * 1000)
-        tokens_used = response.usage.total_tokens if response.usage else 0
-        
-        content = response.choices[0].message.content
-        data = _parse_response(content)
         output = _validate_and_build_output(data, context, decision)
         
         # Check guardrails
@@ -167,10 +171,6 @@ def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Opti
         logger.info(f"Generate step completed: {len(output.message_text)} chars, stage={output.next_stage.value}")
         
         return output, latency_ms, tokens_used
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse Generate response: {e}")
-        return _get_fallback_output(context, decision), int((time.time() - start_time) * 1000), 0
         
     except Exception as e:
         logger.error(f"Generate step failed: {e}", exc_info=True)

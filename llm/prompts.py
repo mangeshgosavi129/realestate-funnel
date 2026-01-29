@@ -76,6 +76,16 @@ DECISION RULES:
 - stage=pricing AND intent=high/very_high AND lead ready to commit: INITIATE_CTA
 - User explicitly asks to book/schedule call/demo: INITIATE_CTA
 
+STAGE TRANSITION RULES:
+- ALWAYS adopt stage_recommendation from Analyze unless overriding for specific reason
+- greeting -> qualification: After first substantive exchange
+- qualification -> pricing: When user asks about cost/pricing/fees OR analysis.stage_rec=pricing
+- qualification -> pricing: When all required info gathered (product, quantity, timeline)
+- pricing -> cta: When intent=high/very_high AND user shows commitment signals
+- ANY -> cta: When user explicitly requests booking
+- NEVER go backward (pricing->qualification) unless user introduces completely new topic
+- If analyze.stage_rec differs from current stage AND confidence > 0.7, prefer analyze.stage_rec
+
 TIMING HEURISTICS:
 - VERY_HIGH intent: 60-120 min followup
 - HIGH intent: 120-240 min

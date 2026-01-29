@@ -153,6 +153,7 @@ class ConversationOut(BaseModel):
     intent_level: Optional[IntentLevel]
     mode: ConversationMode
     user_sentiment: Optional[UserSentiment]
+    needs_human_attention: bool = False
 
     rolling_summary: Optional[str]
     last_message: Optional[str]
@@ -457,6 +458,7 @@ class InternalConversationOut(BaseModel):
     intent_level: Optional[IntentLevel]
     mode: ConversationMode
     user_sentiment: Optional[UserSentiment]
+    needs_human_attention: bool = False
     rolling_summary: Optional[str]
     last_message: Optional[str]
     last_message_at: Optional[datetime]
@@ -475,6 +477,7 @@ class InternalConversationUpdate(BaseModel):
     mode: Optional[ConversationMode] = None
     intent_level: Optional[IntentLevel] = None
     user_sentiment: Optional[UserSentiment] = None
+    needs_human_attention: Optional[bool] = None
     rolling_summary: Optional[str] = None
     last_message: Optional[str] = None
     followup_count_24h: Optional[int] = None

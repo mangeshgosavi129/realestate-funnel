@@ -11,10 +11,64 @@ router = APIRouter()
 
 @router.get("", response_model=List[ConversationOut])
 def get_conversations(
+    mode: str = None,
+    needs_human_attention: bool = None,
+    attended_only: bool = False,
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(get_auth_context)
 ):
-    return db.query(Conversation).filter(Conversation.organization_id == auth.organization_id).all()
+    query = db.query(Conversation).filter(Conversation.organization_id == auth.organization_id)
+    
+    if mode:
+        query = query.filter(Conversation.mode == mode)
+        
+    if needs_human_attention is not None:
+        query = query.filter(Conversation.needs_human_attention == needs_human_attention)
+        
+    if attended_only:
+        query = query.filter(Conversation.human_attention_resolved_at.isnot(None))\
+                     .order_by(Conversation.human_attention_resolved_at.desc())
+
+    if not attended_only and needs_human_attention is None and mode is None:
+         # Default ordering if no specific filters
+         query = query.order_by(Conversation.updated_at.desc())
+        
+    return query.all()
+
+@router.patch("/{conversation_id}", response_model=ConversationOut)
+def update_conversation(
+    conversation_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context)
+):
+    """
+    Generic patch for conversation fields.
+    For now, explicitly allowed fields: 'needs_human_attention', 'user_sentiment', 'intent_level', 'stage'.
+    """
+    db_conv = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.organization_id == auth.organization_id
+    ).first()
+    
+    if not db_conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+        
+    allowed_fields = ['needs_human_attention', 'user_sentiment', 'intent_level', 'stage']
+    
+    for key, value in payload.items():
+        if key in allowed_fields:
+            if hasattr(db_conv, key):
+                # If marking as attended (False), set the resolved timestamp
+                if key == 'needs_human_attention' and value is False and db_conv.needs_human_attention is True:
+                     from datetime import datetime
+                     db_conv.human_attention_resolved_at = datetime.utcnow()
+                     
+                setattr(db_conv, key, value)
+                
+    db.commit()
+    db.refresh(db_conv)
+    return db_conv
 
 @router.get("/{conversation_id}/messages", response_model=List[MessageOut])
 def get_conversation_messages(
@@ -69,3 +123,5 @@ def release_conversation(
     db.commit()
     db.refresh(db_conv)
     return db_conv
+
+

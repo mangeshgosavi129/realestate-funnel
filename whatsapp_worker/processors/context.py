@@ -105,10 +105,10 @@ def build_pipeline_context(
     # Build pipeline input
     context = PipelineInput(
         # Business context
-        business_name=organization_name,
-        business_description="A CRM platform for small businesses that helps them manage leads and automate sales. Key value: save 10 hours/week, starts at $29/mo.",  # Mocked for testing
+        business_name="Global TaxMaster",
+        business_description="Global Tax Masters is a distinguished advisory firm with 15+ years of experience. We have assisted 400+ clients across 20 states, saving over ₹1500 Crores in duties. Our services are cost-effective, with reasonable professional fees tailored to specific client requirements. Core Service (MOOWR Scheme): Allows manufacturing entities (Pvt Ltd, LLP, Partnership, Proprietorship) to import capital goods and raw materials without paying upfront duties. Duty Relief: You do not pay Basic Customs Duty (BCD), IGST, Social Welfare Surcharge, or Anti-Dumping Duty. Payment Terms: Duty is effectively exempted if goods are used for manufacturing indefinitely. Duty is payable only if goods are sold/removed to the domestic market (no interest charged). Future Scope: The license has lifetime validity. Once registered, all future machine imports for that factory are automatically duty-free. Registration & Documents: Timeline & Scope: Approval takes 4–6 weeks. Registration is premises-based (factory-specific); moving locations or adding units requires separate registrations. Verification: Customs Superintendent visits specifically to verify storage safety (CCTV, fire safety, burglary protection). Required Documents: Site Plan, Bank Solvency Certificate, Fire Safety Audit, All-Risk Insurance Policy, Incorporation/Financial documents, and KYC of key personnel. Contact: Email: rohit@saveduty.com | Phone: +91 8797 01 02 03 Address: HD-305, WeWork Futura, Magarpatta, Pune.",  # Mocked for testing
         
-        # Conversation context
+        # Conversation context  
         rolling_summary=conversation.get("rolling_summary", ""),
         last_3_messages=last_messages,
         

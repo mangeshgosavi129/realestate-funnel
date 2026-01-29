@@ -247,6 +247,7 @@ def _conversation_to_schema(conv: Conversation) -> InternalConversationOut:
         last_bot_message_at=conv.last_bot_message_at,
         followup_count_24h=conv.followup_count_24h or 0,
         total_nudges=conv.total_nudges or 0,
+        needs_human_attention=conv.needs_human_attention or False,
         scheduled_followup_at=conv.scheduled_followup_at,
         created_at=conv.created_at,
         updated_at=conv.updated_at,
@@ -337,7 +338,8 @@ def update_conversation(
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(conv, field, value)
+        if hasattr(conv, field):
+            setattr(conv, field, value)
 
     db.commit()
     db.refresh(conv)
