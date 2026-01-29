@@ -282,9 +282,6 @@ async def create_conversation(
     db: Session = Depends(get_db),
 ):
     """Create a new conversation."""
-    import logging
-    logger = logging.getLogger(__name__)
-    
     conv = Conversation(
         organization_id=payload.organization_id,
         lead_id=payload.lead_id,
@@ -305,14 +302,10 @@ async def create_conversation(
         from server.services.websocket_events import emit_conversation_updated
         from server.schemas import ConversationOut
         conv_out = ConversationOut.model_validate(conv, from_attributes=True)
-        org_id = conv.organization_id
-        print(f"🆕 [NEW CONV] Creating new conversation {conv.id} for org_id={org_id}, type={type(org_id)}")
-        print(f"🆕 [NEW CONV] About to emit WebSocket event...")
-        await emit_conversation_updated(org_id, conv_out)
-        print(f"✅ [NEW CONV] WebSocket emit completed for conversation {conv.id}")
+        await emit_conversation_updated(conv.organization_id, conv_out)
     except Exception as e:
-        print(f"❌ [NEW CONV] Failed to emit websocket for new conversation: {e}")
-        logger.warning(f"Failed to emit websocket for new conversation: {e}")
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to emit websocket for new conversation: {e}")
 
     return _conversation_to_schema(conv)
 
