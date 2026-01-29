@@ -4,12 +4,12 @@ from typing import Mapping, Tuple, Optional
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import func
 
 from server.dependencies import get_db, get_auth_context, require_internal_secret
 from server.schemas import MessageOut, AuthContext, ConversationOut
-from server.models import Message, Conversation, WhatsAppIntegration
+from server.models import Message, Conversation, WhatsAppIntegration, Lead
 from server.enums import MessageFrom
 from server.services.websocket_events import emit_conversation_updated
 from uuid import UUID
@@ -48,10 +48,20 @@ def _send_whatsapp_text(
     """
     Sends WhatsApp text message using runtime credentials passed in payload.
     """
+    # Debug logging
+    logger.info(f"[WA Send] to={to}, message_len={len(message) if message else 0}, "
+                f"access_token={'set' if access_token else 'MISSING'}, "
+                f"phone_number_id={phone_number_id or 'MISSING'}")
+    
     # Validation
     if not (access_token and phone_number_id and to and message):
-        logger.error("Missing WhatsApp configuration or recipient")
-        return {"status": "error", "message": "Missing configuration"}, 500
+        missing = []
+        if not access_token: missing.append("access_token")
+        if not phone_number_id: missing.append("phone_number_id")
+        if not to: missing.append("to (recipient)")
+        if not message: missing.append("message")
+        logger.error(f"Missing WhatsApp configuration or recipient. Missing: {missing}")
+        return {"status": "error", "message": f"Missing configuration: {', '.join(missing)}"}, 500
 
     headers = {
         "Content-type": "application/json",
@@ -159,9 +169,10 @@ async def _send_msg(
         phone_number_id = phone_number_id or integration.phone_number_id
         version = version or integration.version
 
-    # 1) Verify conversation belongs to org
+    # 1) Verify conversation belongs to org (with eager loading of Lead)
     conv = (
         db.query(Conversation)
+        .options(joinedload(Conversation.lead))
         .filter(
             Conversation.id == conversation_id,
             Conversation.organization_id == organization_id,
@@ -172,14 +183,17 @@ async def _send_msg(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Recipient should come from DB conversation record
-    recipient_phone = getattr(conv, "customer_phone", None) or getattr(conv, "wa_id", None)
+    # Recipient should come from Lead's phone number (via relationship)
+    recipient_phone = conv.lead.phone if conv.lead else None
+    
+    # Debug logging
+    logger.info(f"[send_msg] conv.lead_id={conv.lead_id}, conv.lead={conv.lead}, recipient_phone={recipient_phone}")
 
     # Optional override: allow payload.to
     recipient_phone = payload.get("to") or recipient_phone
 
     if not recipient_phone:
-        raise HTTPException(status_code=400, detail="Conversation has no WhatsApp recipient (customer_phone/wa_id)")
+        raise HTTPException(status_code=400, detail="Conversation has no associated lead phone number")
 
     # 2) Store message in DB
     db_message = Message(
