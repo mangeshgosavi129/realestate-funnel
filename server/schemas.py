@@ -407,7 +407,6 @@ class InternalIntegrationWithOrgOut(BaseModel):
     integration_id: UUID
     access_token: str
     version: str
-    verify_token: str
     app_secret: str
     phone_number_id: str
     is_connected: bool

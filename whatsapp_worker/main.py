@@ -106,6 +106,8 @@ def start_worker():
                     else:
                         logger.warning(f"Processing failed with {status_code}. Message will be retried.")
                         
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON decode error: {e}. Body: {message.get('Body')}")
                 except Exception as e:
                     logger.error(f"Error processing message: {e}", exc_info=True)
                     # Don't delete - let SQS retry

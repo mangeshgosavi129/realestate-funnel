@@ -40,29 +40,10 @@ def _integration_to_payload(integration: WhatsAppIntegration) -> dict:
         "organization_id": str(integration.organization_id),
         "access_token": integration.access_token,
         "version": integration.version,
-        "verify_token": integration.verify_token,
         "app_secret": integration.app_secret,
         "phone_number_id": integration.phone_number_id,
         "is_connected": integration.is_connected,
     }
-
-
-@router.get("/whatsapp/by-verify-token")
-def get_whatsapp_integration_by_verify_token(
-    verify_token: str,
-    _: None = Depends(require_internal_secret),
-    db: Session = Depends(get_db),
-):
-    integration = (
-        db.query(WhatsAppIntegration)
-        .filter(WhatsAppIntegration.verify_token == verify_token)
-        .first()
-    )
-    if not integration:
-        raise HTTPException(status_code=404, detail="WhatsApp integration not found")
-    if not integration.is_connected:
-        raise HTTPException(status_code=409, detail="WhatsApp integration not connected")
-    return _integration_to_payload(integration)
 
 
 @router.get("/whatsapp/by-phone-number-id/{phone_number_id}")
@@ -137,7 +118,6 @@ def get_integration_with_org(
         integration_id=integration.id,
         access_token=integration.access_token,
         version=integration.version,
-        verify_token=integration.verify_token,
         app_secret=integration.app_secret,
         phone_number_id=integration.phone_number_id,
         is_connected=integration.is_connected,
