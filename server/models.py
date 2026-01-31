@@ -229,7 +229,6 @@ class WhatsAppIntegration(Base):
 
     access_token = Column(Text, nullable=False)
     version = Column(String(20), nullable=False)
-    verify_token = Column(String(255), nullable=False) 
     app_secret = Column(String(255), nullable=False)
     phone_number_id = Column(String(255), nullable=False)
     is_connected = Column(Boolean, default=False)

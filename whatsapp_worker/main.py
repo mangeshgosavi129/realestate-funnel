@@ -5,6 +5,7 @@ Long-polls SQS for incoming WhatsApp messages and processes them through HTL pip
 import logging
 import json
 import time
+import base64
 from typing import Mapping, Tuple, Optional
 from collections import defaultdict
 from threading import Lock
@@ -16,6 +17,7 @@ from whatsapp_worker.config import config
 from whatsapp_worker.processors.context import build_pipeline_context
 from whatsapp_worker.processors.actions import handle_pipeline_result
 from whatsapp_worker.processors.api_client import api_client
+from whatsapp_worker.security import validate_signature
 from llm.pipeline import run_pipeline
 from server.enums import ConversationMode, MessageFrom
 
@@ -65,7 +67,35 @@ def start_worker():
                 receipt_handle = message['ReceiptHandle']
                 
                 try:
-                    body = json.loads(message['Body'])
+                    # Parse the new message format with raw_body and headers
+                    sqs_message = json.loads(message['Body'])
+                    
+                    # Extract components
+                    body = sqs_message.get('body', {})
+                    headers = sqs_message.get('headers', {})
+                    raw_body_b64 = sqs_message.get('raw_body_b64')
+                    
+                    # Decode raw body from base64
+                    raw_body = base64.b64decode(raw_body_b64) if raw_body_b64 else None
+                    
+                    # Verify signature before processing
+                    if raw_body and headers:
+                        if not validate_signature(raw_body, headers):
+                            logger.warning("Signature verification failed. Deleting message from queue.")
+                            sqs.delete_message(
+                                QueueUrl=config.QUEUE_URL,
+                                ReceiptHandle=receipt_handle
+                            )
+                            continue
+                    else:
+                        logger.warning("Missing raw_body or headers for signature verification. Deleting message.")
+                        sqs.delete_message(
+                            QueueUrl=config.QUEUE_URL,
+                            ReceiptHandle=receipt_handle
+                        )
+                        continue
+                    
+                    # Signature verified - proceed with processing
                     result_body, status_code = handle_webhook(body)
 
                     if status_code == 200:

@@ -334,7 +334,6 @@ class AnalyticsReportOut(BaseModel):
 class WhatsAppIntegrationCreate(BaseModel):
     access_token: str
     version: str
-    verify_token: str
     app_secret: str
     phone_number_id: str
 
@@ -342,7 +341,6 @@ class WhatsAppIntegrationCreate(BaseModel):
 class WhatsAppIntegrationUpdate(BaseModel):
     access_token: Optional[str]
     version: Optional[str]
-    verify_token: Optional[str]
     app_secret: Optional[str]
     phone_number_id: Optional[str]
 
@@ -354,7 +352,6 @@ class WhatsAppIntegrationOut(BaseModel):
     access_token: str
     app_secret: str
     version: str
-    verify_token: str
     is_connected: bool
     created_at: datetime
     updated_at: Optional[datetime]
