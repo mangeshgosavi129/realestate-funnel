@@ -32,7 +32,7 @@ class DecisionAction(str, Enum):
     """Pipeline Step 2 output: what action to take."""
     SEND_NOW = "send_now"
     WAIT_SCHEDULE = "wait_schedule"
-    HANDOFF_HUMAN = "handoff_human"
+    FLAG_ATTENTION = "flag_attention"
     INITIATE_CTA = "initiate_cta"
 
 

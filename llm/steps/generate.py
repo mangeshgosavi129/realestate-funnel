@@ -1,5 +1,5 @@
 """
-Step 3: GENERATE - Write the message to send.
+Step 2: GENERATE (The Mouth) - Write the response.
 """
 import json
 import logging
@@ -10,13 +10,12 @@ from openai import OpenAI
 
 from llm.config import llm_config
 from llm.schemas import (
-    PipelineInput, DecisionOutput, GenerateOutput,
-    StatePatch, SelfCheck
+    PipelineInput, ClassifyOutput, GenerateOutput
 )
-from llm.prompts import GENERATE_SYSTEM_PROMPT, GENERATE_USER_TEMPLATE
-from llm.utils import normalize_enum
+from llm.prompts import GENERATE_USER_TEMPLATE
+from llm.prompts_registry import get_system_prompt
 from llm.api_helpers import llm_call_with_retry
-from server.enums import ConversationStage, IntentLevel, UserSentiment, CTAType, DecisionAction
+from server.enums import CTAType, ConversationStage
 
 logger = logging.getLogger(__name__)
 
@@ -32,116 +31,52 @@ def _format_messages(messages: list) -> str:
     return "\n".join(lines)
 
 
-def _build_system_prompt(context: PipelineInput) -> str:
-    """Build system prompt with constraints."""
-    flow_guidance = context.flow_prompt if context.flow_prompt else "Follow standard sales conversation flow."
-    
-    # Determine if this is the first message in the conversation
-    # It's NOT the first message if there are any bot messages in the history
-    has_bot_messages = any(
-        msg.sender == "bot" for msg in (context.last_3_messages or [])
-    )
-    is_first_message = not has_bot_messages and not context.rolling_summary
-    
-    return GENERATE_SYSTEM_PROMPT.format(
-        max_words=context.max_words,
-        questions_per_message=context.questions_per_message,
-        language_pref=context.language_pref,
-        flow_prompt=flow_guidance,
-        is_first_message=str(is_first_message).lower(),  # "true" or "false"
-    )
-
-
-def _build_user_prompt(context: PipelineInput, decision: DecisionOutput) -> str:
-    """Build the user prompt with decision context."""
+def _build_user_prompt(context: PipelineInput, classification: ClassifyOutput) -> str:
+    """Build the user prompt with Brain decision."""
     decision_compact = {
-        "action": decision.action.value,
-        "why": decision.why,
-        "stage": decision.next_stage.value,
-        "cta": decision.recommended_cta.value if decision.recommended_cta else None,
+        "action": classification.action.value,
+        "new_stage": classification.new_stage.value,
+        "thought": classification.thought_process[:100], # Context for mouth
+        "cta": classification.recommended_cta.value if classification.recommended_cta else None,
     }
     
     return GENERATE_USER_TEMPLATE.format(
         business_name=context.business_name,
-        business_description=context.business_description or "",
         rolling_summary=context.rolling_summary or "No summary yet",
         last_3_messages=_format_messages(context.last_3_messages),
-        decision_json=json.dumps(decision_compact, separators=(",", ":")),
+        decision_json=json.dumps(decision_compact),
         conversation_stage=context.conversation_stage.value,
-        intent_level=context.intent_level.value,
-        user_sentiment=context.user_sentiment.value,
-        whatsapp_window_open=context.timing.whatsapp_window_open,
     )
 
 
-def _parse_response(content: str) -> dict:
-    """Parse JSON from LLM response."""
-    content = content.strip()
-    if content.startswith("```"):
-        lines = content.split("\n")
-        content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-    return json.loads(content)
-
-
-def _validate_and_build_output(data: dict, context: PipelineInput, decision: DecisionOutput) -> GenerateOutput:
+def _validate_and_build_output(data: dict, context: PipelineInput) -> GenerateOutput:
     """Validate and build typed output from raw JSON."""
-    # Map stage string to enum with fuzzy matching
-    next_stage = normalize_enum(
-        data.get("next_stage"),
-        ConversationStage,
-        decision.next_stage
-    )
     
-    # Map CTA type with fuzzy matching
-    cta_type = normalize_enum(
-        data.get("cta_type"),
-        CTAType,
-        None
-    )
-    
-    # Build state patch with defensive enum parsing
-    sp = data.get("state_patch", {})
-    state_patch = StatePatch(
-        intent_level=normalize_enum(sp.get("intent_level"), IntentLevel, None),
-        user_sentiment=normalize_enum(sp.get("user_sentiment"), UserSentiment, None),
-        conversation_stage=normalize_enum(sp.get("conversation_stage"), ConversationStage, None),
-    )
-    
-    # Build self check
-    sc = data.get("self_check", {})
-    self_check = SelfCheck(
-        guardrails_pass=sc.get("guardrails_pass", True),
-        violations=sc.get("violations", []),
-    )
-    
-    # If decision was not SEND_NOW, message should be empty
-    message_text = data.get("message_text", "")
-    if decision.action != DecisionAction.SEND_NOW:
-        message_text = ""
-    
+    # Simple validation using .get() with defaults
+    # CTA & Followup overrides from Generator (if any)
+    cta_str = data.get("cta_type")
+    cta_type = None
+    if cta_str:
+        try:
+            cta_type = CTAType(cta_str)
+        except ValueError:
+            pass
+            
     return GenerateOutput(
-        message_text=message_text,
+        message_text=data.get("message_text", ""),
         message_language=data.get("message_language", context.language_pref),
         cta_type=cta_type,
-        next_stage=next_stage,
         next_followup_in_minutes=max(0, data.get("next_followup_in_minutes", 0)),
-        state_patch=state_patch,
-        self_check=self_check,
+        self_check_passed=True, # Pro-forma for now
+        violations=[]
     )
 
-
-def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Optional[GenerateOutput], int, int]:
+def run_generate(context: PipelineInput, classification: ClassifyOutput) -> Tuple[Optional[GenerateOutput], int, int]:
     """
     Run the Generate step.
-    
-    Only runs if decision.action == SEND_NOW.
-    
-    Returns:
-        Tuple of (GenerateOutput or None, latency_ms, tokens_used)
+    Only runs if classification.should_respond is True.
     """
-    # Skip if not sending now
-    if decision.action != DecisionAction.SEND_NOW:
-        logger.info(f"Skipping generate: action={decision.action.value}")
+    if not classification.should_respond:
         return None, 0, 0
     
     client = OpenAI(
@@ -149,11 +84,18 @@ def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Opti
         base_url=llm_config.base_url,
     )
     
-    system_prompt = _build_system_prompt(context)
-    user_prompt = _build_user_prompt(context, decision)
+    # DYNAMIC SYSTEM PROMPT (The Fix)
+    # Load instruction ONLY for the target stage determined by the Brain
+    system_prompt = get_system_prompt(
+        stage=classification.new_stage, # Use the NEW stage
+        business_name=context.business_name,
+        flow_prompt=context.flow_prompt,
+        max_words=context.max_words
+    )
+    
+    user_prompt = _build_user_prompt(context, classification)
     
     start_time = time.time()
-    tokens_used = 0
     
     def make_api_call():
         return client.chat.completions.create(
@@ -162,43 +104,62 @@ def run_generate(context: PipelineInput, decision: DecisionOutput) -> Tuple[Opti
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_object"},  # More reliable than strict schema
+            response_format={"type": "json_object"},
         )
     
     try:
         data = llm_call_with_retry(
             api_call=make_api_call,
-            max_retries=2,
+            max_retries=1, # Fast fail to fallback
             step_name="Generate"
         )
         
         latency_ms = int((time.time() - start_time) * 1000)
-        output = _validate_and_build_output(data, context, decision)
+        output = _validate_and_build_output(data, context)
         
-        # Check guardrails
-        if not output.self_check.guardrails_pass:
-            logger.warning(f"Guardrail violations: {output.self_check.violations}")
-        
-        logger.info(f"Generate step completed: {len(output.message_text)} chars, stage={output.next_stage.value}")
-        
-        return output, latency_ms, tokens_used
+        logger.info(f"Generate: {len(output.message_text)} chars")
+        return output, latency_ms, 0
         
     except Exception as e:
-        logger.error(f"Generate step failed: {e}", exc_info=True)
-        return _get_fallback_output(context, decision), int((time.time() - start_time) * 1000), 0
+        logger.error(f"Generate failed: {e}. Attempting Fallback.")
+        # FALLBACK RETRY (Simple Prompt)
+        return _run_emergency_fallback(context, client)
 
 
-def _get_fallback_output(context: PipelineInput, decision: DecisionOutput) -> GenerateOutput:
-    """Return safe fallback output on error."""
-    return GenerateOutput(
-        message_text="",  # Don't send anything on error
-        message_language=context.language_pref,
-        cta_type=None,
-        next_stage=decision.next_stage,
-        next_followup_in_minutes=60,  # Try again in an hour
-        state_patch=StatePatch(),
-        self_check=SelfCheck(
-            guardrails_pass=False,
-            violations=["generation_failed"],
-        ),
-    )
+
+def _run_emergency_fallback(context: PipelineInput, client: OpenAI) -> Tuple[Optional[GenerateOutput], int, int]:
+    """
+    Emergency Retry: Strip all complexity, just ask for a polite response.
+    """
+    start_time = time.time()
+    try:
+        messages_text = _format_messages(context.last_3_messages)
+        
+        fallback_prompt = f"""
+        You are a helpful assistant for {context.business_name}.
+        The user said:
+        {messages_text}
+        
+        Write a polite, professional 1-sentence response.
+        Output strictly JSON: {{"message_text": "..."}}
+        """
+        
+        response = client.chat.completions.create(
+            model=llm_config.model,
+            messages=[{"role": "user", "content": fallback_prompt}],
+            response_format={"type": "json_object"},
+        )
+        
+        content = response.choices[0].message.content
+        data = json.loads(content)
+        
+        output = GenerateOutput(
+            message_text=data.get("message_text", "I'm sorry, I'm having trouble connecting right now."),
+            message_language="en"
+        )
+        
+        return output, int((time.time() - start_time) * 1000), 0
+        
+    except Exception as e:
+        logger.error(f"Generate Fallback failed: {e}")
+        return None, 0, 0 # Give up, say nothing

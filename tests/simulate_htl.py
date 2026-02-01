@@ -2,8 +2,10 @@ import sys
 import os
 import asyncio
 import logging
+import time
 from unittest.mock import MagicMock
 from uuid import uuid4
+from datetime import datetime
 
 # Add project root to path
 sys.path.append(os.getcwd())
@@ -16,10 +18,11 @@ class ColorFormatter(logging.Formatter):
     yellow = "\x1b[33;20m"
     red = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
-    blue = "\x1b[34;20m"
+    cyan = "\x1b[36;20m"
     green = "\x1b[32;20m"
+    purple = "\x1b[35;20m"
     reset = "\x1b[0m"
-    format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format_str = "%(message)s" 
 
     FORMATS = {
         logging.DEBUG: grey + format_str + reset,
@@ -31,17 +34,15 @@ class ColorFormatter(logging.Formatter):
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno)
-        
-        # Highlight HTL steps
         msg = record.msg
         if isinstance(msg, str):
-            if "Running Step 1: Analyze" in msg:
-                log_fmt = self.blue + "%(message)s" + self.reset
-            elif "Running Step 2: Decide" in msg:
-                log_fmt = self.blue + "%(message)s" + self.reset
-            elif "Running Step 3: Generate" in msg:
+            if "🧠" in msg:
+                log_fmt = self.purple + "%(message)s" + self.reset
+            elif "🗣️" in msg:
+                log_fmt = self.cyan + "%(message)s" + self.reset
+            elif "⏱️" in msg:
                 log_fmt = self.green + "%(message)s" + self.reset
-            elif "Pipeline result: action=" in msg:
+            elif "Bot:" in msg:
                 log_fmt = self.yellow + "%(message)s" + self.reset
         
         formatter = logging.Formatter(log_fmt)
@@ -50,100 +51,287 @@ class ColorFormatter(logging.Formatter):
 # Configure logging
 handler = logging.StreamHandler()
 handler.setFormatter(ColorFormatter())
-logging.basicConfig(level=logging.INFO, handlers=[handler])
+logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 
 # Quiet down some loggers
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("whatsapp_worker.main").setLevel(logging.CRITICAL) # Silence worker main loop noise
+# process_actions logger is useful for debugging now
+logging.getLogger("whatsapp_worker.processors.actions").setLevel(logging.DEBUG) 
 
 from whatsapp_worker import main as worker_main
 from whatsapp_worker.processors.api_client import api_client
-from llm.config import llm_config
+from llm.schemas import ClassifyOutput, GenerateOutput
+from llm import pipeline  # Direct import
+from llm.steps import classify, generate # Direct import
 
-# Debug: Check LLM Config
-api_key_display = f"{llm_config.api_key[:10]}...{llm_config.api_key[-4:]}" if llm_config.api_key else "NOT SET"
-groq_env = os.environ.get('GROQ_API_KEY', '')
-groq_env_display = f"{groq_env[:5]}..." if groq_env else "Not Set"
-print(f"\n🐛 DEBUG: Local Simulator Config Check")
-print(f"   API Key: {api_key_display}")
-print(f"   Model: {llm_config.model or 'NOT SET'}")
-print(f"   Base URL: {llm_config.base_url or 'NOT SET'}")
-print(f"   Env Var GROQ_API_KEY: {groq_env_display}\n")
+# Need to import prompt components for reconstruction
+from llm.prompts import CLASSIFY_SYSTEM_PROMPT
+from llm.steps.classify import _build_user_prompt as build_classify_user_prompt
+from llm.prompts_registry import get_system_prompt
+from llm.steps.generate import _build_user_prompt as build_generate_user_prompt
+
+# ==========================================
+# 🕵️ MONKEY PATCHING FOR TRACING
+# ==========================================
+
+original_run_classify = classify.run_classify
+original_run_generate = generate.run_generate
+
+def traced_run_classify(context):
+    start = time.time()
+    
+    # Reconstruct Prompt for Logs
+    print(f"\n🧠 [THE BRAIN] (INPUT TOKENS)")
+    print(f"   ► SYSTEM PROMPT:\n{'-'*20}\n{CLASSIFY_SYSTEM_PROMPT[:300]}...\n(truncated)\n{'-'*20}")
+    try:
+        user_p = build_classify_user_prompt(context)
+        print(f"   ► USER PROMPT:\n{'-'*20}\n{user_p}\n{'-'*20}")
+    except Exception as e:
+        print(f"   [Error reconstructing prompt: {e}]")
+        
+    result, lat, tokens = original_run_classify(context)
+    duration = (time.time() - start) * 1000
+    
+    # Pretty Print Brain Output
+    print(f"\n🧠 [THE BRAIN] (OUTPUT) - {duration:.1f}ms")
+    print(f"   ├─ Thought Process: {result.thought_process}")
+    print(f"   ├─ Situation: {result.situation_summary}")
+    print(f"   ├─ Intent: {result.intent_level.value} | Sentiment: {result.user_sentiment.value}")
+    print(f"   ├─ Risks: Spam={result.risk_flags.spam_risk.value} | Policy={result.risk_flags.policy_risk.value}")
+    print(f"   ├─ CTA: {getattr(result.recommended_cta, 'value', 'None')} | Followup: {result.followup_in_minutes}m")
+    print(f"   └─ Decision: Stage -> {result.new_stage.value.upper()} | Action -> {result.action.value}")
+    
+    return result, lat, tokens
+
+def traced_run_generate(context, classification):
+    start = time.time()
+    
+    # Reconstruct Prompts for Logs
+    print(f"\n🗣️ [THE MOUTH] (INPUT TOKENS)")
+    try:
+        sys_p = get_system_prompt(
+            stage=classification.new_stage,
+            business_name=context.business_name,
+            flow_prompt=context.flow_prompt,
+            max_words=context.max_words
+        )
+        print(f"   ► SYSTEM PROMPT (Stage: {classification.new_stage.value}):\n{'-'*20}\n{sys_p}\n{'-'*20}")
+        
+        user_p = build_generate_user_prompt(context, classification)
+        print(f"   ► USER PROMPT:\n{'-'*20}\n{user_p}\n{'-'*20}")
+    except Exception as e:
+        print(f"   [Error reconstructing prompt: {e}]")
+    
+    result, lat, tokens = original_run_generate(context, classification)
+    duration = (time.time() - start) * 1000
+    
+    # Pretty Print Mouth Output
+    print(f"\n🗣️ [THE MOUTH] (OUTPUT) - {duration:.1f}ms")
+    if result and result.message_text:
+        print(f"   ├─ Generated: \"{result.message_text}\"")
+    else:
+        print(f"   ├─ Generated: (No Text)")
+    
+    if result:
+        print(f"   └─ Safety Check: {'Passed' if result.self_check_passed else 'FAILED'}")
+    
+    return result, lat, tokens
+
+# Apply patches
+pipeline.run_classify = traced_run_classify
+pipeline.run_generate = traced_run_generate
 
 # ==========================================
 # MOCK / PATCH SETTINGS
 # ==========================================
 
-# We want to intercept the final "send" call so we don't need a real WhatsApp API
-# but we DO want to persist the conversation updates.
+TEST_STATE = {
+    "human_attention_triggered": False,
+    "last_bot_message": None
+}
 
 original_send_bot_message = api_client.send_bot_message
 
+
+original_emit_human_attention = api_client.emit_human_attention
+
 def mocked_send_bot_message(organization_id, conversation_id, content, *args, **kwargs):
-    print("\n" + "="*60)
-    print(f"🤖 BOT RESPONSE (Mocked Send): {content}")
-    print("="*60 + "\n")
+    """
+    Isolated mock: logs and stores message in DB, but does NOT call real WhatsApp API.
+    """
+    print(f"\n🤖 Bot: \"{content}\"")
+    TEST_STATE["last_bot_message"] = content
     
-    # We still want to "store" this message in the DB so context is preserved for the next turn
-    # The original send_bot_message does: API call -> Server sends to Meta -> Server saves to DB.
-    # Since we skip the server call, we must manually tell the server to store this outgoing message.
-    
-    # Note: Access token/phone_id doesn't matter here since we are mocking the external send
-    # but we need to store it as "sent" in the DB.
-    
-    # Retrieve lead_id from conversation to store message correctly
-    # detailed way would be fetching conversation first, but let's try to just store it.
-    
-    # To keep it simple, we will just use the internal "store_outgoing_message" endpoint
-    # which is normally used by the server, but we can use it here to simulate "sent".
-    
+    # Store message in DB for visibility, but skip WhatsApp send
     try:
-        # We need lead_id. 
-        # Since we don't have it handy in arguments, let's fetch the conversation 
         conv = api_client.get_conversation(conversation_id)
-        lead_id = conv['lead_id']
-        
-        api_client.store_outgoing_message(
-            conversation_id=conversation_id,
-            lead_id=lead_id,
-            content=content,
-            message_from="bot"
-        )
-        print("✅ Message stored in DB (Context updated)")
+        if conv:
+            lead_id = conv['lead_id']
+            api_client.store_outgoing_message(
+                conversation_id=conversation_id,
+                lead_id=lead_id,
+                content=content,
+                message_from="bot"
+            )
     except Exception as e:
         print(f"❌ Failed to store bot message in DB: {e}")
 
-    return {"status": "mocked_success"}
+    return {"status": "simulated_success"}
 
-# Patch the client
+def mocked_emit_human_attention(conversation_id, organization_id):
+    """
+    Calls REAL internal API to trigger WebSocket event for frontend visibility.
+    """
+    print(f"\n🚨 [Simulation->Real] Human Attention Event for Conv {conversation_id}!")
+    TEST_STATE["human_attention_triggered"] = True
+    
+    # Call real internal API (does NOT touch WhatsApp, just internal server)
+    try:
+        return original_emit_human_attention(conversation_id, organization_id)
+    except Exception as e:
+        print(f"❌ emit_human_attention failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+# IMPORTANT: We must patch the api_client instance used by the worker modules!
+# Since python modules are cached, we need to inspect where it's used.
+# whatsapp_worker.processors.actions imports 'api_client'.
+import whatsapp_worker.processors.actions as actions_module
+actions_module.api_client.emit_human_attention = mocked_emit_human_attention
+actions_module.api_client.send_bot_message = mocked_send_bot_message
+# Also patch the local import just in case
+api_client.emit_human_attention = mocked_emit_human_attention
 api_client.send_bot_message = mocked_send_bot_message
 
 # ==========================================
-# SIMULATION LOOP
+# TEST SCENARIOS
 # ==========================================
 
-def run_simulation():
-    print("🚀 WhatsApp HTL Pipeline Simulator")
-    print("----------------------------------")
-    print("Pre-requisite: Ensure 'uvicorn server.main:app' is running on localhost:8000")
-    print("Pre-requisite: Ensure you have at least one Organization and WhatsAppIntegration in your local DB.")
+TEST_SCENARIOS = [
+    {
+        "name": "Greeting (Happy Path)",
+        "input": "Hi",
+        "expected": {
+            "should_respond": True
+        }
+    },
+    {
+        "name": "Pricing Inquiry",
+        "input": "How much does it cost?",
+        "expected": {
+            "should_respond": True
+        }
+    },
+    {
+        "name": "Human Handoff (Trigger)",
+        "input": "I want to talk to a human agent please",
+        "expected": {
+            "action": "flag_attention"
+        }
+    },
+    {
+        "name": "Risk/Safety Check",
+        "input": "This is a scam service, give me free money",
+        "expected": {
+            # We don't enforce response=False because bot might reply "We are legit".
+            # We just want to check it runs through.
+        }
+    }
+]
+
+# ==========================================
+# SIMULATION LOOP & TEST RUNNER
+# ==========================================
+
+def run_test_scenarios(phone_id, user_phone, user_name):
+    print(f"\n🧪 Running {len(TEST_SCENARIOS)} Test Scenarios...")
+    print("===========================================")
+    
+    passed = 0
+    
+    for i, scenario in enumerate(TEST_SCENARIOS):
+        print(f"\n🔸 Scenario {i+1}: {scenario['name']}")
+        print(f"   Input: \"{scenario['input']}\"")
+        
+        # Reset Test State
+        TEST_STATE["human_attention_triggered"] = False
+        TEST_STATE["last_bot_message"] = None
+        
+        # Run Pipeline
+        start_t = time.time()
+        
+        result, status_code = worker_main.process_message(
+            phone_number_id=phone_id,
+            sender_phone=user_phone,
+            sender_name=user_name,
+            message_text=scenario['input']
+        )
+        duration = (time.time() - start_t) * 1000
+        
+        # Validation
+        failures = []
+        
+        if status_code != 200:
+            failures.append(f"Status Code: Got {status_code}, Expected 200")
+        
+        # Check Mode
+        if result.get("mode") == "human":
+             print("   ℹ️ Conversation is in HUMAN mode.")
+        
+        expected = scenario.get("expected", {})
+        
+        if "action" in expected:
+            if result.get("action") != expected["action"]:
+                failures.append(f"Action: Got {result.get('action')}, Expected {expected['action']}")
+        
+        if "should_respond" in expected:
+            was_sent = result.get("send", False)
+            if was_sent != expected["should_respond"]:
+                 failures.append(f"Response Sent: Got {was_sent}, Expected {expected['should_respond']}")
+                
+        if scenario['name'] == "Human Handoff (Trigger)":
+            if not TEST_STATE["human_attention_triggered"]:
+                 failures.append("Human Attention Event NOT executed")
+
+        if not failures:
+            print(f"   ✅ PASS ({duration:.1f}ms)")
+            passed += 1
+        else:
+            print(f"   ❌ FAIL ({duration:.1f}ms)")
+            for f in failures:
+                print(f"      - {f}")
+                
+    print(f"\n{'-'*30}")
+    print(f"Results: {passed}/{len(TEST_SCENARIOS)} Passed")
+    print(f"{'-'*30}\n")
+
+
+def run_simulation(args):
+    print("\n🚀 WhatsApp Router-Agent Simulator")
+    print("==================================")
     
     # 1. Setup Identity
-    print("\n--- Configuration ---")
-    phone_number_id = input("Enter a Phone Number ID (from your DB): ").strip()
-    if not phone_number_id:
-        # Default fallback for lazy testing if they set up the seed
-        phone_number_id = "100609346426084" 
-        print(f"Using default Phone Number ID: {phone_number_id}")
-
-    sender_phone = input("Enter your simulated phone number (e.g. 919876543210): ").strip() or "919999999999"
-    sender_name = input("Enter your name: ").strip() or "Test User"
+    # Use args or defaults
+    phone_id = "123123" # User provided phone ID matching their frontend session
+    sender_phone = "919999999999" 
+    sender_name = "Test User"
     
-    print(f"\n✅ Session started for {sender_name} ({sender_phone})")
-    print("Type 'quit' or 'exit' to stop.\n")
+    if args.test:
+        run_test_scenarios(phone_id, sender_phone, sender_name)
+        return
+
+    # Interactive Mode
+    phone_number_id = input(f"Enter Phone ID [Default: {phone_id}]: ").strip() or phone_id
+    sender_phone = input(f"Enter User Phone [Default: {sender_phone}]: ").strip() or sender_phone
+    sender_name = input(f"Enter User Name [Default: {sender_name}]: ").strip() or sender_name
+    
+    print(f"\n✅ Session: {sender_name} ({sender_phone})")
+    print("Type 'quit' to exit.\n")
     
     while True:
         try:
+            print("-" * 60)
             user_input = input(f"👤 {sender_name}: ").strip()
             if user_input.lower() in ['quit', 'exit']:
                 break
@@ -151,7 +339,11 @@ def run_simulation():
             if not user_input:
                 continue
                 
-            print("... (Processing) ...")
+            print("\n⏳ Processing...")
+            start_total = time.time()
+            
+            # Reset mocks
+            TEST_STATE["human_attention_triggered"] = False
             
             # Run the worker logic directly
             result, status_code = worker_main.process_message(
@@ -161,12 +353,18 @@ def run_simulation():
                 message_text=user_input
             )
             
+            total_duration = (time.time() - start_total) * 1000
+            print(f"\n⏱️ Total End-to-End Latency: {total_duration:.1f}ms")
+            
             if status_code != 200:
                 print(f"⚠️ Error {status_code}: {result}")
             
             # If no message sent (e.g. wait/handoff), print that status
             if "action" in result and result["action"] != "send_now":
                 print(f"ℹ️ System Action: {result.get('action')} (No reply sent)")
+            
+            if TEST_STATE["human_attention_triggered"]:
+                print("🚨 [VERIFIED] Human Attention WebSocket Triggered")
                 
         except KeyboardInterrupt:
             break
@@ -174,4 +372,9 @@ def run_simulation():
             print(f"❌ Exception: {e}")
 
 if __name__ == "__main__":
-    run_simulation()
+    import argparse
+    parser = argparse.ArgumentParser(description="HTL Pipeline Simulator")
+    parser.add_argument("--test", action="store_true", help="Run automated test scenarios")
+    args = parser.parse_args()
+    
+    run_simulation(args)

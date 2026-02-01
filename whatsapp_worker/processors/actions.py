@@ -29,14 +29,17 @@ def handle_pipeline_result(
     message_to_send = None
     updates = {}
     
+    # Use the unified classification output
+    classification = result.classification
+    
     # ========================================
-    # Update conversation state from analysis
+    # Update conversation state from classification
     # ========================================
     
     # Update stage if recommended and confidence is high enough
-    if result.analysis.confidence >= 0.6:
+    if classification.confidence >= 0.6:
         current_stage = conversation.get("stage")
-        recommended_stage = result.analysis.stage_recommendation.value
+        recommended_stage = classification.new_stage.value
         if recommended_stage != current_stage:
             logger.info(f"Stage transition: {current_stage} -> {recommended_stage}")
             updates["stage"] = recommended_stage
@@ -45,66 +48,64 @@ def handle_pipeline_result(
     # Handle decision actions
     # ========================================
     
-    # Always reflect Latest Analysis (Intent & Sentiment)
-    # This ensures "Passive Monitoring" (WAIT) still updates the Dashboard
-    if result.analysis.intent_level:
-        updates["intent_level"] = result.analysis.intent_level.value
-    if result.analysis.user_sentiment:
-        updates["user_sentiment"] = result.analysis.user_sentiment.value
+    # Reflect Intent & Sentiment
+    if classification.intent_level:
+        updates["intent_level"] = classification.intent_level.value
+    if classification.user_sentiment:
+        updates["user_sentiment"] = classification.user_sentiment.value
 
     if result.should_send_message:
         # We're sending a message
-        message_to_send = result.response.message_text
-        
-        # Apply state patch from generation (Overwrites analysis if specific change occurred)
-        if result.response.state_patch:
-            patch = result.response.state_patch
-            if patch.intent_level:
-                updates["intent_level"] = patch.intent_level.value
-            if patch.user_sentiment:
-                updates["user_sentiment"] = patch.user_sentiment.value
-            if patch.conversation_stage:
-                updates["stage"] = patch.conversation_stage.value
-        
-        # Update conversation with new stage
-        updates["stage"] = result.response.next_stage.value
+        if result.response:
+            message_to_send = result.response.message_text
+            
+            # Note: State patching was removed from GenerateOutput in simplifications
+            # We rely on Classification for state updates now.
+             
+            # Verify stage from response matches classification (sanity check)
+            # In new flow, classification drives stage.
+            updates["stage"] = classification.new_stage.value
         
     elif result.should_schedule_followup:
         # Schedule a follow-up
-        followup_minutes = result.decision.followup_in_minutes
+        followup_minutes = classification.followup_in_minutes
         if followup_minutes > 0:
             schedule_followup(
                 conversation,
                 followup_minutes,
-                result.decision.followup_reason
+                classification.followup_reason
             )
         
     elif result.should_escalate:
         # Escalate to human
-        logger.info(f"🚩 ACTION REQUIRED: Conversation {conversation_id} flagged for human attention: {result.decision.why}")
+        logger.info(f"🚩 ACTION REQUIRED: Conversation {conversation_id} flagged for human attention")
+        print(f"DEBUG: Entering should_escalate block for {conversation_id}") # DEBUG LOG
         
         # Flag persistent attention needed in DB
         updates["needs_human_attention"] = True
         
         try:
+            print("DEBUG: Calling emit_human_attention...") # DEBUG LOG
             api_client.emit_human_attention(
                 conversation_id=conversation_id,
                 organization_id=UUID(conversation["organization_id"]),
             )
+            print("DEBUG: emit_human_attention called successfully") # DEBUG LOG
         except Exception as e:
             logger.error(f"Failed to emit human attention event: {e}")
+            print(f"DEBUG: Exception in emit_human_attention: {e}") # DEBUG LOG
     
     elif result.should_initiate_cta:
         # Initiate CTA - notify frontend
-        cta_type = result.decision.recommended_cta.value if result.decision.recommended_cta else "book_call"
+        cta_type = classification.recommended_cta.value if classification.recommended_cta else "book_call"
         logger.info(f"🚀 CTA INITIATED: Conversation {conversation_id}, type={cta_type}")
         try:
             api_client.emit_cta_initiated(
                 conversation_id=conversation_id,
                 organization_id=UUID(conversation["organization_id"]),
                 cta_type=cta_type,
-                cta_name=result.decision.cta_name,
-                scheduled_time=result.decision.cta_scheduled_time,
+                cta_name="CTA", # classification doesn't have cta_name anymore in simplified schema?
+                scheduled_time=datetime.now(timezone.utc).isoformat(), # Default to now
             )
         except Exception as e:
             logger.error(f"Failed to emit CTA initiated event: {e}")
@@ -156,7 +157,7 @@ def schedule_followup(
     conversation_id = UUID(conversation["id"])
     organization_id = UUID(conversation["organization_id"])
     
-    # Cancel any existing pending follow-ups for this conversation
+    # Cancel any existing pending actions for this conversation
     cancelled = api_client.cancel_pending_actions(conversation_id)
     if cancelled > 0:
         logger.info(f"Cancelled {cancelled} pending actions for conversation {conversation_id}")
@@ -188,8 +189,8 @@ def log_pipeline_event(
         conversation_id=conversation_id,
         event_type="pipeline_run",
         pipeline_step="complete",
-        input_summary=f"stage={result.analysis.stage_recommendation.value}, conf={result.analysis.confidence:.2f}",
-        output_summary=f"action={result.decision.action.value}, send={result.should_send_message}",
+        input_summary=f"stage={result.classification.new_stage.value}, conf={result.classification.confidence:.2f}",
+        output_summary=f"action={result.classification.action.value}, send={result.should_send_message}",
         latency_ms=result.pipeline_latency_ms,
         tokens_used=result.total_tokens_used,
     )

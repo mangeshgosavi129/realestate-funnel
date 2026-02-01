@@ -42,8 +42,9 @@ ENUM_ALIASES = {
     "send": "send_now",
     "wait": "wait_schedule",
     "schedule": "wait_schedule",
-    "handoff": "handoff_human",
-    "escalate": "handoff_human",
+    "handoff": "flag_attention",
+    "escalate": "flag_attention",
+    "handoff_human": "flag_attention",
     "cta": "initiate_cta",
     # IntentLevel
     "very-high": "very_high",
@@ -198,7 +199,7 @@ def get_decision_schema() -> Dict[str, Any]:
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["send_now", "wait_schedule", "handoff_human", "initiate_cta"],
+                    "enum": ["send_now", "wait_schedule", "flag_attention", "initiate_cta"],
                     "description": "Action to take"
                 },
                 "why": {

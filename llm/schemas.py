@@ -72,7 +72,7 @@ class PipelineInput(BaseModel):
 
 
 # ============================================================
-# Step 1: Analyze Output
+# Step 1: Classify Output ( The Brain )
 # ============================================================
 
 class RiskFlags(BaseModel):
@@ -82,92 +82,61 @@ class RiskFlags(BaseModel):
     hallucination_risk: RiskLevel = RiskLevel.LOW
 
 
-class KBRequirement(BaseModel):
-    """Knowledge base lookup need."""
-    required: bool = False
-    query: str = ""
-    reason: str = ""
-
-
-class AnalyzeOutput(BaseModel):
+class ClassifyOutput(BaseModel):
     """
-    Output from Step 1: Analyze.
-    Understands the situation and detects signals.
+    Output from Step 1: Classify (The Brain).
+    Consolidates Analysis and Decision making into one step.
     """
+    # Analysis
+    thought_process: str = Field(..., max_length=300)
     situation_summary: str = Field(..., max_length=200)
-    lead_goal_guess: str = Field(..., max_length=100)
-    missing_info: List[str] = Field(default_factory=list, max_length=5)
-    detected_objections: List[str] = Field(default_factory=list, max_length=3)
-    stage_recommendation: ConversationStage
     intent_level: IntentLevel
     user_sentiment: UserSentiment
     risk_flags: RiskFlags
-    need_kb: KBRequirement
+    
+    # Decision
+    action: DecisionAction
+    new_stage: ConversationStage  # The determined next stage
+    should_respond: bool = False
+    
+    # Action Payload
+    recommended_cta: Optional[CTAType] = None
+    followup_in_minutes: int = 0
+    followup_reason: str = ""
+    
+    # Metadata
     confidence: float = Field(..., ge=0.0, le=1.0)
 
 
 # ============================================================
-# Step 2: Decision Output
+# Step 2: Generate Output ( The Mouth )
 # ============================================================
-
-class DecisionOutput(BaseModel):
-    """
-    Output from Step 2: Decide.
-    Determines what action to take.
-    """
-    action: DecisionAction
-    why: str = Field(..., max_length=150)
-    next_stage: ConversationStage
-    recommended_cta: Optional[CTAType] = None
-    cta_scheduled_time: Optional[str] = None  # ISO datetime when CTA should occur
-    cta_name: Optional[str] = None  # Human-readable label for the CTA
-    followup_in_minutes: int = Field(default=0, ge=0)
-    followup_reason: str = ""
-    kb_used: bool = False
-    template_required: bool = False
-
-
-# ============================================================
-# Step 3: Generate Output
-# ============================================================
-
-class StatePatch(BaseModel):
-    """State updates to apply after message generation."""
-    intent_level: Optional[IntentLevel] = None
-    user_sentiment: Optional[UserSentiment] = None
-    conversation_stage: Optional[ConversationStage] = None
-
-
-class SelfCheck(BaseModel):
-    """Guardrail self-check results."""
-    guardrails_pass: bool = True
-    violations: List[str] = Field(default_factory=list)
-
 
 class GenerateOutput(BaseModel):
     """
-    Output from Step 3: Generate.
-    The actual message to send (if any).
+    Output from Step 2: Generate.
+    The actual message to send.
     """
-    message_text: str = ""  # Empty if not sending
+    message_text: str = ""  # The generated response
     message_language: str = "en"
     cta_type: Optional[CTAType] = None
-    next_stage: ConversationStage
-    next_followup_in_minutes: int = 0
-    state_patch: StatePatch
-    self_check: SelfCheck
+    next_followup_in_minutes: int = 0  # Optional override from generator
+    
+    self_check_passed: bool = True
+    violations: List[str] = Field(default_factory=list)
 
 
 # ============================================================
-# Step 4: Summary Output
+# Step 3: Summary Output ( The Memory )
 # ============================================================
 
 class SummaryOutput(BaseModel):
     """
-    Output from Step 4: Summarize.
-    Updated rolling summary of the conversation.
+    Output from Step 3: Summarize (Async).
+    Updated rolling summary.
     """
-    updated_rolling_summary: str = Field(..., max_length=500)  # 80-200 words typically
+    updated_rolling_summary: str = Field(..., max_length=500)
+    needs_recursive_summary: bool = False  # If true, this summary is partial/queued
 
 
 # ============================================================
@@ -176,21 +145,34 @@ class SummaryOutput(BaseModel):
 
 class PipelineResult(BaseModel):
     """
-    Complete result from running the HTL pipeline.
-    Contains outputs from all steps.
+    Complete result from running the Router-Agent pipeline.
     """
     # Step outputs
-    analysis: AnalyzeOutput
-    decision: DecisionOutput
-    response: Optional[GenerateOutput] = None  # None if not sending
-    summary: SummaryOutput
+    classification: ClassifyOutput
+    response: Optional[GenerateOutput] = None
+    summary: Optional[SummaryOutput] = None
     
     # Metadata
     pipeline_latency_ms: int = 0
     total_tokens_used: int = 0
     
-    # Computed actions
-    should_send_message: bool = False
-    should_schedule_followup: bool = False
-    should_escalate: bool = False
-    should_initiate_cta: bool = False
+    # Async Flags
+    needs_background_summary: bool = True
+    
+    # Computed actions helpers
+    @property
+    def should_send_message(self) -> bool:
+        return self.classification.should_respond and self.response is not None and bool(self.response.message_text)
+    
+    @property
+    def should_schedule_followup(self) -> bool:
+        return self.classification.action == DecisionAction.WAIT_SCHEDULE
+    
+    @property
+    def should_escalate(self) -> bool:
+        return self.classification.action == DecisionAction.FLAG_ATTENTION
+        
+    @property
+    def should_initiate_cta(self) -> bool:
+        return self.classification.action == DecisionAction.INITIATE_CTA
+

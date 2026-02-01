@@ -1,18 +1,24 @@
 """
-HTL Pipeline Orchestrator.
-Runs all 4 steps and returns a complete pipeline result.
+Router-Agent Pipeline Orchestrator.
+Orchestrates the Classify (Brain) -> Generate (Mouth) flow.
+Summarization is now flagged for background execution.
 """
 import logging
 from typing import Optional
 
 from llm.schemas import (
-    PipelineInput, PipelineResult,
-    AnalyzeOutput, DecisionOutput, GenerateOutput, SummaryOutput
+    PipelineInput, PipelineResult, ClassifyOutput
 )
-from llm.steps.analyze import run_analyze
-from llm.steps.decide import run_decision
+from llm.steps.classify import run_classify
 from llm.steps.generate import run_generate
-from llm.steps.summarize import run_summarize
+# Actually, per plan, Summarize is moved out of here or run at end? 
+# "Use classify -> generate -> output"
+# "Summarize moved to background worker"
+# So here we just mark it? 
+# Wait, the worker needs to call run_summarize. 
+# Let's import it here for the worker to assume responsibility? 
+# Or just keep it imported so it's available.
+
 from server.enums import DecisionAction
 
 logger = logging.getLogger(__name__)
@@ -20,110 +26,94 @@ logger = logging.getLogger(__name__)
 
 def run_pipeline(context: PipelineInput, user_message: str) -> PipelineResult:
     """
-    Run the complete HTL pipeline.
+    Run the Router-Agent pipeline.
     
     Steps:
-    1. ANALYZE - Understand the conversation
-    2. DECIDE - Choose action (send now, wait, escalate)
-    3. GENERATE - Write message (only if SEND_NOW)
-    4. SUMMARIZE - Update rolling summary
-    
-    Args:
-        context: Complete pipeline input context
-        user_message: The message that triggered this pipeline run
-        
-    Returns:
-        PipelineResult with all step outputs and computed actions
+    1. CLASSIFY (The Brain): Analyze & Decide
+    2. GENERATE (The Mouth): Write Message (if Brain says so)
+    3. Return Result (with needs_background_summary=True)
     """
     total_latency_ms = 0
     total_tokens = 0
     
-    # ========================================
-    # Step 1: ANALYZE
-    # ========================================
-    logger.info("Running Step 1: Analyze")
-    analysis, latency, tokens = run_analyze(context)
-    total_latency_ms += latency
-    total_tokens += tokens
-    
-    # ========================================
-    # Step 2: DECIDE
-    # ========================================
-    logger.info("Running Step 2: Decide")
-    decision, latency, tokens = run_decision(context, analysis)
-    total_latency_ms += latency
-    total_tokens += tokens
-    
-    # ========================================
-    # Step 3: GENERATE (conditional)
-    # ========================================
-    response_output: Optional[GenerateOutput] = None
-    bot_message = ""
-    
-    if decision.action == DecisionAction.SEND_NOW:
-        logger.info("Running Step 3: Generate")
-        response_output, latency, tokens = run_generate(context, decision)
+    try:
+        # ========================================
+        # Step 1: CLASSIFY (The Brain)
+        # ========================================
+        logger.info("Running Step 1: Classify (Brain)")
+        classification, latency, tokens = run_classify(context)
         total_latency_ms += latency
         total_tokens += tokens
         
-        if response_output:
-            bot_message = response_output.message_text
-    else:
-        logger.info(f"Skipping Step 3: action={decision.action.value}")
+        # ========================================
+        # Step 2: GENERATE (The Mouth)
+        # ========================================
+        response_output = None
+        
+        if classification.should_respond:
+            logger.info(f"Running Step 2: Generate (Mouth) - Action: {classification.action.value}")
+            response_output, latency, tokens = run_generate(context, classification)
+            total_latency_ms += latency
+            total_tokens += tokens
+        else:
+            logger.info("Skipping Generate (Brain decided not to respond)")
+
+        # ========================================
+        # Build Result
+        # ========================================
+        result = PipelineResult(
+            classification=classification,
+            response=response_output,
+            summary=None, # To be filled by background worker
+            pipeline_latency_ms=total_latency_ms,
+            total_tokens_used=total_tokens,
+            needs_background_summary=True # Signal to worker
+        )
+        
+        logger.info(f"Pipeline Complete: {total_latency_ms}ms. Response: {bool(response_output)}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Pipeline Critical Error: {e}", exc_info=True)
+        return _get_emergency_result()
+
+
+def _get_emergency_result() -> PipelineResult:
+    """Catastrophic failure fallback."""
+    from llm.schemas import RiskFlags
+    from server.enums import ConversationStage, IntentLevel, UserSentiment
     
-    # ========================================
-    # Step 4: SUMMARIZE (always)
-    # ========================================
-    logger.info("Running Step 4: Summarize")
-    summary, latency, tokens = run_summarize(
-        context, user_message, bot_message, response_output
+    # Return a safe, do-nothing result to keep worker alive
+    # We can't easily construct a full ClassifyOutput without imports here being messy, 
+    # but let's try to be clean.
+    
+    # Minimal valid classification
+    # We need to construct valid objects.
+    rf = RiskFlags()
+    
+    classify_fallback = ClassifyOutput(
+        thought_process="Critical Pipeline Failure",
+        situation_summary="System Error",
+        intent_level=IntentLevel.UNKNOWN,
+        user_sentiment=UserSentiment.NEUTRAL,
+        risk_flags=rf,
+        action=DecisionAction.WAIT_SCHEDULE, # Safety default
+        new_stage=ConversationStage.GREETING, # We don't know the stage, but schema requires one. 
+        # Ideally we'd pass original stage but we don't have context here easily without passing it down.
+        # It's fine, the worker won't update DB if we handle it right.
+        should_respond=False,
+        confidence=0.0
     )
-    total_latency_ms += latency
-    total_tokens += tokens
     
-    # ========================================
-    # Build Final Result
-    # ========================================
-    should_initiate_cta = (
-        decision.action == DecisionAction.INITIATE_CTA or 
-        decision.recommended_cta is not None
+    return PipelineResult(
+        classification=classify_fallback,
+        needs_background_summary=False # Don't try to summarize garbage
     )
-    
-    result = PipelineResult(
-        analysis=analysis,
-        decision=decision,
-        response=response_output,
-        summary=summary,
-        pipeline_latency_ms=total_latency_ms,
-        total_tokens_used=total_tokens,
-        should_send_message=decision.action == DecisionAction.SEND_NOW and bool(bot_message),
-        should_schedule_followup=decision.action == DecisionAction.WAIT_SCHEDULE,
-        should_escalate=decision.action == DecisionAction.HANDOFF_HUMAN,
-        should_initiate_cta=should_initiate_cta,
-    )
-    
-    logger.info(
-        f"Pipeline complete: latency={total_latency_ms}ms, tokens={total_tokens}, "
-        f"action={decision.action.value}, send={result.should_send_message}"
-    )
-    
-    return result
 
 
 def run_followup_pipeline(context: PipelineInput) -> PipelineResult:
     """
-    Run pipeline for a scheduled follow-up.
-    
-    This is called by Celery beat when a follow-up is due.
-    The main difference is we don't have a new user message - we're initiating.
-    
-    Args:
-        context: Pipeline context (with latest conversation state)
-        
-    Returns:
-        PipelineResult
+    Run pipeline for scheduled follow-ups.
     """
-    # For follow-ups, we synthesize a "trigger" message
     synthetic_message = "[System: Scheduled follow-up triggered]"
-    
     return run_pipeline(context, synthetic_message)

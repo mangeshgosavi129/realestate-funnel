@@ -191,111 +191,117 @@ def process_message(
     message_text: str,
 ) -> Tuple[Mapping, int]:
     """
-    Process a message through the HTL pipeline using API calls.
+    Process a message through the Router-Agent pipeline.
     """
     try:
         # ========================================
         # Step 1: Gather Information via API
         # ========================================
         
-        # Get organization from phone_number_id
+        # Get organization
         org_result = api_client.get_integration_with_org(phone_number_id)
         if not org_result:
-            logger.error(f"No organization found for phone_number_id: {phone_number_id}")
             return {"status": "error", "message": "Organization not found"}, 404
         
         organization_id = UUID(org_result["organization_id"])
-        organization_name = org_result["organization_name"]
         access_token = org_result["access_token"]
         version = org_result["version"]
         
-        # Get or create lead
+        # Get/Create Lead & Conversation
         lead = api_client.get_or_create_lead(organization_id, sender_phone, sender_name)
         lead_id = UUID(lead["id"])
         
-        # Get or create conversation
-        conversation, is_new_conversation = api_client.get_or_create_conversation(
-            organization_id, lead_id
-        )
+        conversation, _ = api_client.get_or_create_conversation(organization_id, lead_id)
         conversation_id = UUID(conversation["id"])
         
-        # Store incoming message
+        # Store User Message
         api_client.store_incoming_message(conversation_id, lead_id, message_text)
         
-        # Refresh conversation data after storing message (timestamps updated)
+        # Refresh conversation (timestamps)
         conversation = api_client.get_conversation(conversation_id)
         
-        logger.info(f"Processing for org={organization_name}, conv={conversation_id}, mode={conversation.get('mode')}")
-        
         # ========================================
-        # Step 2: Check Mode (Bot vs Human)
+        # Step 2: Check Mode
         # ========================================
         
         if conversation.get("mode") == ConversationMode.HUMAN.value:
-            # Human has taken over - just store message, don't run pipeline
-            logger.info(f"Conversation {conversation_id} is in HUMAN mode, skipping pipeline")
-            # TODO: Send WebSocket notification to frontend
-            return {"status": "ok", "mode": "human", "message_stored": True}, 200
+            return {"status": "ok", "mode": "human"}, 200
         
         # ========================================
-        # Step 3: Run HTL Pipeline
+        # Step 3: Run Pipeline (Brain + Mouth)
         # ========================================
         
-        # Build org config dict from API result
-        org_config = {
-            "organization_name": org_result["organization_name"],
-            "business_name": org_result.get("business_name"),
-            "business_description": org_result.get("business_description"),
-            "flow_prompt": org_result.get("flow_prompt"),
-        }
-        
-        # Build pipeline context
         pipeline_context = build_pipeline_context(
-            org_config, conversation, lead
+            {
+                "organization_name": org_result["organization_name"],
+                "business_name": org_result.get("business_name"),
+                "business_description": org_result.get("business_description"),
+                "flow_prompt": org_result.get("flow_prompt"),
+            }, 
+            conversation, 
+            lead
         )
         
-        # Run the pipeline
-        logger.info(f"Running HTL pipeline for conversation {conversation_id}")
         pipeline_result = run_pipeline(pipeline_context, message_text)
         
-        logger.info(
-            f"Pipeline result: action={pipeline_result.decision.action.value}, "
-            f"send={pipeline_result.should_send_message}, "
-            f"latency={pipeline_result.pipeline_latency_ms}ms"
-        )
-        
         # ========================================
-        # Step 4: Execute Actions
+        # Step 4: Immediate Action (Send Message)
         # ========================================
         
-        response_message = handle_pipeline_result(
-            conversation, lead_id, pipeline_result
-        )
-        
-        if response_message:
-            # Send and store via API
+        response_text = None
+        if pipeline_result.should_send_message and pipeline_result.response:
+            response_text = pipeline_result.response.message_text
             try:
+                # SEND TO WHATSAPP FIRST (Low Latency)
                 api_client.send_bot_message(
                     organization_id=organization_id,
                     conversation_id=conversation_id,
-                    content=response_message,
+                    content=response_text,
                     access_token=access_token,
                     phone_number_id=phone_number_id,
                     version=version,
                     to=sender_phone,
                 )
-                logger.info(f"Sent response to {sender_phone}: {response_message[:50]}...")
             except Exception as e:
-                logger.error(f"Failed to send WhatsApp message via API: {e}", exc_info=True)
-                # If API fails, message might not be stored or sent
-        
+                logger.error(f"Failed to send WhatsApp message: {e}", exc_info=True)
+                # We continue to update state even if send failed, to record intention
+
+        # ========================================
+        # Step 5: Update State & Background Tasks
+        # ========================================
+
+        # Update Conversation State (Stage, Intent, etc.)
+        # Note: We do this concurrently or after sending.
+        handle_pipeline_result(conversation, lead_id, pipeline_result)
+
+        # Background Summary (The Memory)
+        if pipeline_result.needs_background_summary:
+            from llm.steps.summarize import run_background_summary
+            
+            # Run summary generation
+            new_summary = run_background_summary(
+                pipeline_context, 
+                user_message=message_text,
+                bot_message=response_text or "",
+                classification=pipeline_result.classification
+            )
+            
+            # Update DB with new summary if generated
+            if new_summary:
+                try:
+                    # We only update the summary here. Other fields handled by handle_pipeline_result.
+                    api_client.update_conversation(conversation_id, rolling_summary=new_summary)
+                    logger.info(f"Updated rolling summary for {conversation_id}")
+                except Exception as e:
+                    logger.error(f"Failed to save summary to DB: {e}")
+
         return {
             "status": "ok",
-            "action": pipeline_result.decision.action.value,
+            "action": pipeline_result.classification.action.value,
             "send": pipeline_result.should_send_message,
-            "stage": pipeline_result.decision.next_stage.value,
+            "stage": pipeline_result.classification.new_stage.value,
         }, 200
-        
+
     except Exception as e:
         logger.error(f"Message processing error: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}, 500
