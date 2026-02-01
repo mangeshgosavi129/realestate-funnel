@@ -10,7 +10,6 @@ from sqlalchemy import inspect
 app = FastAPI(title="Whatsapp-Bot")
 
 origins = [
-    "https://wabot-sigma.vercel.app",
     "*"
 ]
 
