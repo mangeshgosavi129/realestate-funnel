@@ -10,13 +10,14 @@ from sqlalchemy import inspect
 app = FastAPI(title="Whatsapp-Bot")
 
 origins = [
+    "https://wabot-sigma.vercel.app",
     "*"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],      # IMPORTANT - allows OPTIONS
     allow_headers=["*"],
 )
