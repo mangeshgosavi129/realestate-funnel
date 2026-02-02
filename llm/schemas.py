@@ -3,7 +3,8 @@ Pydantic schemas for HTL Pipeline I/O.
 Strict JSON schemas ensure LLM outputs are validated and typed.
 """
 from datetime import datetime
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict
+from uuid import UUID
 from pydantic import BaseModel, Field
 from server.enums import (
     ConversationStage,
