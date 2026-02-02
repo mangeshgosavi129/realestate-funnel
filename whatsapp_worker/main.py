@@ -233,6 +233,7 @@ def process_message(
         
         pipeline_context = build_pipeline_context(
             {
+                "organization_id": str(organization_id),
                 "organization_name": org_result["organization_name"],
                 "business_name": org_result.get("business_name"),
                 "business_description": org_result.get("business_description"),

@@ -123,6 +123,7 @@ def get_system_prompt(stage: ConversationStage, business_name: str, business_des
     # Inject business-specific scripts into the template
     specific_instruction = instruction_template.format(flow_prompt=flow_prompt)
     
+    return f"{base}\n\n{specific_instruction}"
 
 # ============================================================
 # Classify Factory (The Brain)

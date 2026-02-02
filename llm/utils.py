@@ -44,7 +44,6 @@ ENUM_ALIASES = {
     "handoff": "flag_attention",
     "escalate": "flag_attention",
     "handoff_human": "flag_attention",
-    "cta": "initiate_cta",
     # IntentLevel
     "very-high": "very_high",
     "veryhigh": "very_high",
