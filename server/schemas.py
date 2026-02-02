@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 from server.enums import (
     ConversationStage,
     IntentLevel,
-    CTAType,
     ConversationMode,
     UserSentiment,
     TemplateStatus,
@@ -209,18 +208,16 @@ class MessageOut(BaseModel):
 
 class CTACreate(BaseModel):
     name: str
-    cta_type: CTAType
 
 class CTAUpdate(BaseModel):
-    name: Optional[str]
-    is_active: Optional[bool]
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class CTAOut(BaseModel):
     id: UUID
     organization_id: UUID
     name: str
-    cta_type: CTAType
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime]
@@ -467,6 +464,7 @@ class InternalConversationOut(BaseModel):
     organization_id: UUID
     lead_id: UUID
     cta_id: Optional[UUID]
+    cta_scheduled_at: Optional[datetime]
     stage: ConversationStage
     intent_level: Optional[IntentLevel]
     mode: ConversationMode
@@ -496,6 +494,8 @@ class InternalConversationUpdate(BaseModel):
     followup_count_24h: Optional[int] = None
     total_nudges: Optional[int] = None
     scheduled_followup_at: Optional[datetime] = None
+    cta_id: Optional[UUID] = None
+    cta_scheduled_at: Optional[datetime] = None
 
 
 class InternalMessageContext(BaseModel):

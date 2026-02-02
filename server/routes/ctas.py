@@ -23,7 +23,7 @@ def create_cta(
     auth: AuthContext = Depends(get_auth_context)
 ):
     db_cta = CTA(
-        **cta.model_dump(),
+        name=cta.name,
         organization_id=auth.organization_id
     )
     db.add(db_cta)

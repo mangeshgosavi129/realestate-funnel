@@ -11,7 +11,6 @@ from server.enums import (
     ConversationStage,
     IntentLevel,
     UserSentiment,
-    CTAType,
     DecisionAction,
     RiskLevel,
 )
@@ -177,10 +176,13 @@ def get_classify_schema() -> Dict[str, Any]:
                     "type": "boolean",
                     "description": "Set to true if user explicitly asks for human or query is too complex"
                 },
-                "recommended_cta": {
+                "selected_cta_id": {
                     "type": ["string", "null"],
-                    "enum": ["book_call", "book_demo", "book_meeting", None],
-                    "description": "CTA type if applicable"
+                    "description": "UUID of selected CTA from dashboard"
+                },
+                "cta_scheduled_at": {
+                    "type": ["string", "null"],
+                    "description": "ISO 8601 datetime for CTA"
                 },
                 "followup_in_minutes": {
                     "type": "integer",
@@ -198,7 +200,7 @@ def get_classify_schema() -> Dict[str, Any]:
             "required": [
                 "thought_process", "situation_summary", "intent_level", "user_sentiment",
                 "risk_flags", "action", "new_stage", "should_respond", "needs_human_attention",
-                "recommended_cta", "followup_in_minutes", "followup_reason", "confidence"
+                "selected_cta_id", "cta_scheduled_at", "followup_in_minutes", "followup_reason", "confidence"
             ],
             "additionalProperties": False
         }
@@ -293,10 +295,9 @@ def get_decision_schema() -> Dict[str, Any]:
                     "enum": ["greeting", "qualification", "pricing", "cta", "followup", "closed", "lost", "ghosted"],
                     "description": "Next conversation stage"
                 },
-                "recommended_cta": {
+                "selected_cta_id": {
                     "type": ["string", "null"],
-                    "enum": ["book_call", "book_demo", "book_meeting", None],
-                    "description": "CTA type if applicable"
+                    "description": "UUID of selected CTA"
                 },
                 "cta_scheduled_time": {
                     "type": ["string", "null"],
@@ -322,7 +323,7 @@ def get_decision_schema() -> Dict[str, Any]:
                 }
             },
             "required": [
-                "action", "why", "next_stage", "recommended_cta",
+                "action", "why", "next_stage", "selected_cta_id",
                 "cta_scheduled_time", "cta_name", "followup_in_minutes",
                 "followup_reason", "kb_used", "template_required"
             ],
@@ -347,10 +348,9 @@ def get_generate_schema() -> Dict[str, Any]:
                     "type": "string",
                     "description": "Language code"
                 },
-                "cta_type": {
+                "selected_cta_id": {
                     "type": ["string", "null"],
-                    "enum": ["book_call", "book_demo", "book_meeting", None],
-                    "description": "CTA type if included"
+                    "description": "UUID of selected CTA"
                 },
                 "next_stage": {
                     "type": "string",
@@ -394,7 +394,7 @@ def get_generate_schema() -> Dict[str, Any]:
                 }
             },
             "required": [
-                "message_text", "message_language", "cta_type", "next_stage",
+                "message_text", "message_language", "selected_cta_id", "next_stage",
                 "next_followup_in_minutes", "state_patch", "self_check"
             ],
             "additionalProperties": False

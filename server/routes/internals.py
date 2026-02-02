@@ -132,6 +132,20 @@ def get_integration_with_org(
     )
 
 
+@router.get("/organizations/{organization_id}/ctas", response_model=List[CTAOut])
+def get_organization_ctas(
+    organization_id: UUID,
+    _: None = Depends(require_internal_secret),
+    db: Session = Depends(get_db),
+):
+    """Get active CTAs for an organization."""
+    return (
+        db.query(CTA)
+        .filter(CTA.organization_id == organization_id, CTA.is_active == True)
+        .all()
+    )
+
+
 # ========================================
 # Lead Endpoints
 # ========================================
@@ -230,6 +244,7 @@ def _conversation_to_schema(conv: Conversation) -> InternalConversationOut:
         organization_id=conv.organization_id,
         lead_id=conv.lead_id,
         cta_id=conv.cta_id,
+        cta_scheduled_at=conv.cta_scheduled_at,
         stage=conv.stage,
         intent_level=conv.intent_level,
         mode=conv.mode,

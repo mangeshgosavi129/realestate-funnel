@@ -107,20 +107,44 @@ def handle_pipeline_result(
                 classification.followup_reason
             )
     
-    elif result.should_initiate_cta:
-        # Initiate CTA - notify frontend
-        cta_type = classification.recommended_cta.value if classification.recommended_cta else "book_call"
-        logger.info(f"🚀 CTA INITIATED: Conversation {conversation_id}, type={cta_type}")
-        try:
-            api_client.emit_cta_initiated(
-                conversation_id=conversation_id,
-                organization_id=UUID(conversation["organization_id"]),
-                cta_type=cta_type,
-                cta_name="CTA", # classification doesn't have cta_name anymore in simplified schema?
-                scheduled_time=datetime.now(timezone.utc).isoformat(), # Default to now
-            )
-        except Exception as e:
-            logger.error(f"Failed to emit CTA initiated event: {e}")
+    elif result.should_initiate_cta or classification.selected_cta_id:
+        # Initiate CTA - notify frontend and persist
+        selected_cta_id = classification.selected_cta_id
+        cta_scheduled_at = classification.cta_scheduled_at
+        
+        # If we have an override from Generator Stage, use it
+        if result.response and result.response.selected_cta_id:
+            selected_cta_id = result.response.selected_cta_id
+            
+        if selected_cta_id:
+            updates["cta_id"] = str(selected_cta_id)
+            if cta_scheduled_at:
+                updates["cta_scheduled_at"] = cta_scheduled_at
+            
+            # Fetch CTA Name for the event
+            cta_name = "CTA"
+            try:
+                # We could optimize this by caching or passing CTA names in the context
+                raw_ctas = api_client.get_organization_ctas(UUID(conversation["organization_id"]))
+                for cta in raw_ctas:
+                    if str(cta["id"]) == str(selected_cta_id):
+                        cta_name = cta["name"]
+                        break
+            except Exception as e:
+                logger.error(f"Failed to fetch CTA name for event: {e}")
+
+            logger.info(f"🚀 CTA INITIATED: Conversation {conversation_id}, type={cta_name}, id={selected_cta_id}")
+            
+            try:
+                api_client.emit_cta_initiated(
+                    conversation_id=conversation_id,
+                    organization_id=UUID(conversation["organization_id"]),
+                    cta_type=cta_name, # Use Name as type per requirements
+                    cta_name=cta_name,
+                    scheduled_time=cta_scheduled_at or datetime.now(timezone.utc).isoformat(),
+                )
+            except Exception as e:
+                logger.error(f"Failed to emit CTA initiated event: {e}")
     
     # ========================================
     # Always update rolling summary

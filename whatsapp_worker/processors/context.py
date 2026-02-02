@@ -116,12 +116,26 @@ def build_pipeline_context(
     business_description = org_config.get("business_description") or ""
     flow_prompt = org_config.get("flow_prompt") or ""
     
+    # Fetch available CTAs
+    try:
+        raw_ctas = api_client.get_organization_ctas(UUID(org_config["organization_id"]))
+        available_ctas = [
+            {"id": str(cta["id"]), "name": cta["name"]}
+            for cta in raw_ctas
+        ]
+    except Exception as e:
+        logger.error(f"Failed to fetch CTAs for context: {e}")
+        available_ctas = []
+
     # Build pipeline input
     context = PipelineInput(
         # Business context (from organization config)
         business_name=business_name,
         business_description=business_description,
         flow_prompt=flow_prompt,
+        
+        # CTAs
+        available_ctas=available_ctas,
         
         # Conversation context  
         rolling_summary=conversation.get("rolling_summary", ""),
@@ -132,7 +146,7 @@ def build_pipeline_context(
         conversation_mode=mode,
         intent_level=intent_level,
         user_sentiment=user_sentiment,
-        active_cta=None,  # TODO: Get active CTA if any
+        active_cta_id=UUID(conversation["cta_id"]) if conversation.get("cta_id") else None,
         
         # Timing
         timing=timing,

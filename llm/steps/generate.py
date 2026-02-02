@@ -15,7 +15,7 @@ from llm.schemas import (
 from llm.prompts import GENERATE_USER_TEMPLATE
 from llm.prompts_registry import get_system_prompt
 from llm.api_helpers import llm_call_with_retry
-from server.enums import CTAType, ConversationStage
+from server.enums import ConversationStage
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,8 @@ def _build_user_prompt(context: PipelineInput, classification: ClassifyOutput) -
         "action": classification.action.value,
         "new_stage": classification.new_stage.value,
         "thought": classification.thought_process[:100], # Context for mouth
-        "cta": classification.recommended_cta.value if classification.recommended_cta else None,
+        "selected_cta_id": str(classification.selected_cta_id) if classification.selected_cta_id else None,
+        "cta_scheduled_at": classification.cta_scheduled_at
     }
     
     return GENERATE_USER_TEMPLATE.format(
@@ -52,20 +53,10 @@ def _build_user_prompt(context: PipelineInput, classification: ClassifyOutput) -
 def _validate_and_build_output(data: dict, context: PipelineInput) -> GenerateOutput:
     """Validate and build typed output from raw JSON."""
     
-    # Simple validation using .get() with defaults
-    # CTA & Followup overrides from Generator (if any)
-    cta_str = data.get("cta_type")
-    cta_type = None
-    if cta_str:
-        try:
-            cta_type = CTAType(cta_str)
-        except ValueError:
-            pass
-            
     return GenerateOutput(
         message_text=data.get("message_text", ""),
         message_language=data.get("message_language", context.language_pref),
-        cta_type=cta_type,
+        selected_cta_id=data.get("selected_cta_id"),
         next_followup_in_minutes=max(0, data.get("next_followup_in_minutes", 0)),
         self_check_passed=True, # Pro-forma for now
         violations=[]

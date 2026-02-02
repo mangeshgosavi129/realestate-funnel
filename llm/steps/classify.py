@@ -16,7 +16,7 @@ from llm.utils import normalize_enum, get_classify_schema
 from llm.api_helpers import llm_call_with_retry
 from server.enums import (
     ConversationStage, DecisionAction, IntentLevel, 
-    UserSentiment, RiskLevel, CTAType
+    UserSentiment, RiskLevel
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,17 @@ def _format_messages(messages: list) -> str:
     lines = []
     for msg in messages[-3:]:
         lines.append(f"[{msg.sender}] {msg.text}")
+    return "\n".join(lines)
+
+
+def _format_ctas(ctas: list) -> str:
+    """Format available CTAs for prompt."""
+    if not ctas:
+        return "No CTAs defined in dashboard."
+    
+    lines = []
+    for cta in ctas:
+        lines.append(f"- ID: {cta.get('id')} | Name: {cta.get('name')}")
     return "\n".join(lines)
 
 
@@ -58,10 +69,12 @@ def _build_user_prompt(context: PipelineInput, is_opening: bool) -> str:
     # 2. Build Full Prompt (Note: Business context removed per Brain-Mouth logic separation)
     return CLASSIFY_USER_TEMPLATE.format(
         history_section=history_section,
+        available_ctas=_format_ctas(context.available_ctas),
         conversation_stage=context.conversation_stage.value,
         conversation_mode=context.conversation_mode,
         intent_level=context.intent_level.value,
         user_sentiment=context.user_sentiment.value,
+        active_cta_id=context.active_cta_id or "None",
         now_local=context.timing.now_local,
         whatsapp_window_open=context.timing.whatsapp_window_open,
         followup_count_24h=context.nudges.followup_count_24h,
@@ -103,7 +116,8 @@ def _validate_and_build_output(data: dict, context: PipelineInput) -> ClassifyOu
         new_stage=llm_stage,
         should_respond=data.get("should_respond", False),
         
-        recommended_cta=normalize_enum(data.get("recommended_cta"), CTAType, None),
+        selected_cta_id=data.get("selected_cta_id"),
+        cta_scheduled_at=data.get("cta_scheduled_at"),
         followup_in_minutes=max(0, data.get("followup_in_minutes", 0)),
         followup_reason=data.get("followup_reason", ""),
         

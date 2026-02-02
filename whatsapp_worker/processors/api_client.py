@@ -98,6 +98,13 @@ class InternalsAPIClient:
             if e.status_code == 404:
                 return None
             raise
+            
+    def get_organization_ctas(self, organization_id: UUID) -> List[Dict]:
+        """Get active CTAs for an organization."""
+        response = self.client.get(
+            f"/internals/organizations/{organization_id}/ctas"
+        )
+        return self._handle_response(response)
     
     # ========================================
     # Lead Methods

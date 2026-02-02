@@ -203,6 +203,26 @@ changes
         update internal api url
             in whatsapp_receive - external call
             in whatsapp_worker - internal call
+    
+    n. opening script fixing, seperating algorithmic seperation of opening messgae(no history) and reply (with history)
+    
+    o. brain doesnt really need business description but it is being sent whereas mouth needs it but not the business description
+
+    p. cta -> book a visit
+    book a intro call
+    book a example call
+    book a demo
+    book a meeting
+
+    q. cta -> call a example call - udya 7
+    book a demo at - based on user preference
+
+    r. human attention
+
+    s. proper context handling 
+
+    t. followup system checking
+
     github note : always commit should be in the format
     Improvements (1) - Analytics made better, but completely working
     Fixes (2) - wehsocket doesn't initiate until data loaded. Whatsapp config updated

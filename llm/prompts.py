@@ -23,18 +23,14 @@ TASKS:
 
 2. DECIDE:
    - Determine the Next Conversation Stage.
-     - Default to the current stage unless there is a clear reason to move forward.
-     - NEVER skip stages (e.g., Greeting -> Pricing) unless explicitly asked.
-   - Choose the Best Action:
-     - SEND_NOW: Reply to the user.
-     - WAIT_SCHEDULE: User needs time, or we should wait.
-     - INITIATE_CTA: Time to close.
-   - Set "needs_human_attention": true if user EXPLICITLY asks for a human/representative or if the query is too complex/sensitive. This does NOT change the action - you can still send_now AND set this flag.
+   - Choose the Best Action (SEND_NOW, WAIT_SCHEDULE, INITIATE_CTA).
+   - If INITIATE_CTA is chosen, you MUST select a `selected_cta_id` from the "AVAILABLE CTAs" list provided in the context.
+   - If the user specifies a time/date for the CTA, include it in `cta_scheduled_at` in ISO 8601 format.
 
 OUTPUT SCHEMA (JSON):
 {
-  "thought_process": "Analysis of the situation...",
-  "situation_summary": "Brief summary...",
+  "thought_process": "Analysis...",
+  "situation_summary": "Summary...",
   "intent_level": "low|medium|high|very_high|unknown",
   "user_sentiment": "neutral|happy|angry...",
   "risk_flags": { "spam_risk": "low", "policy_risk": "low", ... },
@@ -44,7 +40,8 @@ OUTPUT SCHEMA (JSON):
   "should_respond": true|false,
   "needs_human_attention": true|false,
   
-  "recommended_cta": "book_call|...",
+  "selected_cta_id": "UUID_FROM_LIST",
+  "cta_scheduled_at": "ISO_TIMESTAMP_OR_NULL",
   "followup_in_minutes": 0,
   "followup_reason": "...",
   
@@ -136,11 +133,15 @@ CLASSIFY_USER_TEMPLATE = """
 === CONVERSATION CONTEXT ===
 {history_section}
 
+=== AVAILABLE CTAs ===
+{available_ctas}
+
 === CURRENT STATE ===
 Stage: {conversation_stage}
 Mode: {conversation_mode}
 Intent: {intent_level}
 Sentiment: {user_sentiment}
+Active CTA: {active_cta_id}
 
 === TIMING ===
 Time Config: {now_local}

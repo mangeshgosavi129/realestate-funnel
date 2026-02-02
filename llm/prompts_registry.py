@@ -30,7 +30,7 @@ You MUST output a valid JSON object with the following structure:
 {{
     "message_text": "Your response string here",
     "message_language": "en",
-    "cta_type": "none" 
+    "selected_cta_id": null
 }}
 
 """

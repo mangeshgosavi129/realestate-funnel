@@ -9,7 +9,6 @@ from server.enums import (
     ConversationStage,
     IntentLevel,
     UserSentiment,
-    CTAType,
     DecisionAction,
     RiskLevel,
 )
@@ -50,6 +49,9 @@ class PipelineInput(BaseModel):
     business_description: str = ""
     flow_prompt: str = ""  # Conversation flow/sales script instructions
     
+    # CTAs
+    available_ctas: List[Dict[str, str]] = [] # [{id: UUID, name: str}]
+    
     # Conversation context
     rolling_summary: str = ""
     last_3_messages: List[MessageContext] = []
@@ -59,7 +61,7 @@ class PipelineInput(BaseModel):
     conversation_mode: Literal["bot", "human"]
     intent_level: IntentLevel
     user_sentiment: UserSentiment
-    active_cta: Optional[CTAType] = None
+    active_cta_id: Optional[UUID] = None
     
     # Timing
     timing: TimingContext
@@ -100,7 +102,8 @@ class ClassifyOutput(BaseModel):
     should_respond: bool = False
     
     # Action Payload
-    recommended_cta: Optional[CTAType] = None
+    selected_cta_id: Optional[UUID] = None
+    cta_scheduled_at: Optional[str] = None # ISO format if LLM picks a time
     followup_in_minutes: int = 0
     followup_reason: str = ""
     
@@ -120,7 +123,7 @@ class GenerateOutput(BaseModel):
     """
     message_text: str = ""  # The generated response
     message_language: str = "en"
-    cta_type: Optional[CTAType] = None
+    selected_cta_id: Optional[UUID] = None
     next_followup_in_minutes: int = 0  # Optional override from generator
     
     self_check_passed: bool = True

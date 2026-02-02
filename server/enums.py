@@ -17,11 +17,6 @@ class IntentLevel(str, Enum):
     VERY_HIGH = "very_high"
     UNKNOWN = "unknown"
 
-class CTAType(str, Enum):
-    BOOK_CALL = "book_call"
-    BOOK_DEMO = "book_demo"
-    BOOK_MEETING = "book_meeting"
-    
 
 class ConversationMode(str, Enum):
     BOT = "bot"
