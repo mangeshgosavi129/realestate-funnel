@@ -3,7 +3,7 @@
 # Function to kill processes
 kill_processes() {
     echo "Killing existing processes..."
-    pkill -f "uvicorn server.main:app"
+    pkill -f "gunicorn server.main:app"
     pkill -f "python3 -m whatsapp_worker.main"
     pkill -f "celery -A whatsapp_worker.tasks.celery_app worker"
     pkill -f "celery -A whatsapp_worker.tasks.celery_app beat"
@@ -42,7 +42,12 @@ else
 fi
 
 echo "Starting FastAPI server on 0.0.0.0:8000 (logs in logs/server.log)..."
-nohup uvicorn server.main:app --reload --host 0.0.0.0 --port 8000 > logs/server.log 2>&1 &
+nohup gunicorn server.main:app \
+  --workers 4 \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8000 \
+  --reload \
+  > logs/server.log 2>&1 &
 SERVER_PID=$!
 
 echo "Starting WhatsApp Worker (logs in logs/worker.log)..."
