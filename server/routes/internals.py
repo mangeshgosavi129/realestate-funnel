@@ -16,7 +16,7 @@ from server.dependencies import require_internal_secret, get_db
 import logging
 from server.models import (
     Conversation, ConversationEvent, Lead, Message, Organization,
-     WhatsAppIntegration, CTA
+    WhatsAppIntegration, CTA
 )
 from server.enums import (
     ConversationMode, ConversationStage, IntentLevel, MessageFrom, UserSentiment
@@ -26,7 +26,7 @@ from server.schemas import (
     InternalIncomingMessageCreate, InternalIntegrationWithOrgOut,
     InternalLeadCreate, InternalLeadOut, InternalMessageContext, InternalMessageOut,
     InternalOutgoingMessageCreate, InternalPipelineEventCreate, InternalPipelineEventOut, 
-    CTAOut
+    InternalDueFollowupOut, CTAOut
 )
 
 router = APIRouter()
