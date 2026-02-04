@@ -221,7 +221,16 @@ changes
 
     s. proper context handling 
 
-    t. followup system checking
+    t. followup system checking - create a static followup system that will, based on the conversation history and last user message time (models.conversations.last_user_message_at), generate a followup message and send it to the user. The message should be sent after 10 mins, 3 hours and 6 hours. 
+
+    u.  
+
+    v. 
+
+    w. 
+    x. 
+    y. 
+    z. 
 
     github note : always commit should be in the format
     Improvements (1) - Analytics made better, but completely working

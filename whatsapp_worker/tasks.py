@@ -96,9 +96,9 @@ def process_single_followup(action: dict):
     try:
         # Get full context for the followup
         context = api_client.get_followup_context(action_id)
-    except InternalsAPIError as e:
-        logger.warning(f"Could not get context for action {action_id}: {e.detail}")
-        api_client.update_action_status(action_id, status="cancelled")
+    except Exception as e:
+        logger.warning(f"Could not get context for action {action_id}: {e}")
+        api_client.delete_scheduled_action(action_id)
         return
     
     conversation = context["conversation"]
@@ -107,8 +107,29 @@ def process_single_followup(action: dict):
     # Skip if conversation is no longer in bot mode
     if conversation.get("mode") != ConversationMode.BOT.value:
         logger.info(f"Skipping followup for {conversation['id']}: mode is {conversation.get('mode')}")
-        api_client.update_action_status(action_id, status="cancelled")
+        api_client.delete_scheduled_action(action_id)
         return
+    
+    # --------------------------------------------------------
+    # RACE CONDITION PROTECTION
+    # --------------------------------------------------------
+    # If the user has replied since this followup was scheduled, 
+    # we should skip it. Cancellation usually handles this, 
+    # but this is a final safety net for concurrency.
+    last_user_at_str = conversation.get("last_user_message_at")
+    action_created_at_str = action.get("created_at")
+    
+    if last_user_at_str and action_created_at_str:
+        from datetime import datetime
+        # Parse ISO strings to UTC datetimes
+        last_user_at = datetime.fromisoformat(last_user_at_str.replace('Z', '+00:00'))
+        action_created_at = datetime.fromisoformat(action_created_at_str.replace('Z', '+00:00'))
+        
+        if last_user_at > action_created_at:
+            logger.info(f"Skipping stale followup for {conversation['id']}: User replied at {last_user_at}")
+            api_client.delete_scheduled_action(action_id)
+            return
+    # --------------------------------------------------------
     
     # Build org config dict from followup context
     org_config = {

@@ -384,6 +384,11 @@ class InternalsAPIClient:
         )
         return self._handle_response(response)
     
+    def delete_scheduled_action(self, action_id: UUID) -> Dict:
+        """Delete a specific scheduled action."""
+        response = self.client.delete(f"/internals/scheduled-actions/{action_id}")
+        return self._handle_response(response)
+    
     def cancel_pending_actions(self, conversation_id: UUID) -> int:
         """Cancel all pending scheduled actions for a conversation."""
         response = self.client.post(
@@ -392,6 +397,15 @@ class InternalsAPIClient:
         )
         result = self._handle_response(response)
         return result.get("cancelled", 0)
+    
+    def delete_pending_actions(self, conversation_id: UUID) -> int:
+        """Delete all pending scheduled actions for a conversation."""
+        response = self.client.post(
+            "/internals/scheduled-actions/delete-pending",
+            params={"conversation_id": str(conversation_id)}
+        )
+        result = self._handle_response(response)
+        return result.get("deleted", 0)
     
     def get_followup_context(self, action_id: UUID) -> Dict:
         """Get full context needed to process a scheduled followup."""

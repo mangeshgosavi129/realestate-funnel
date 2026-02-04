@@ -594,6 +594,48 @@ def update_scheduled_action(
     _: None = Depends(require_internal_secret),
     db: Session = Depends(get_db),
 ):
+    """Update status or execution time of a scheduled action."""
+    action = db.query(ScheduledAction).filter(ScheduledAction.id == action_id).first()
+    if not action:
+        raise HTTPException(status_code=404, detail="Scheduled action not found")
+
+    # Convert string status to enum
+    try:
+        action.status = ScheduledActionStatus(payload.status)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {payload.status}")
+
+    if payload.executed_at:
+        action.executed_at = payload.executed_at
+
+    db.commit()
+    db.refresh(action)
+    return _action_to_schema(action)
+
+
+@router.delete("/scheduled-actions/{action_id}")
+def delete_scheduled_action(
+    action_id: UUID,
+    _: None = Depends(require_internal_secret),
+    db: Session = Depends(get_db),
+):
+    """Delete a specific scheduled action."""
+    action = db.query(ScheduledAction).filter(ScheduledAction.id == action_id).first()
+    if not action:
+        raise HTTPException(status_code=404, detail="Scheduled action not found")
+    
+    db.delete(action)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.patch("/scheduled-actions/{action_id}", response_model=InternalScheduledActionOut)
+def update_scheduled_action(
+    action_id: UUID,
+    payload: InternalScheduledActionUpdate,
+    _: None = Depends(require_internal_secret),
+    db: Session = Depends(get_db),
+):
     """Update scheduled action status."""
     action = db.query(ScheduledAction).filter(ScheduledAction.id == action_id).first()
     if not action:
@@ -630,6 +672,25 @@ def cancel_pending_actions(
     )
     db.commit()
     return {"cancelled": result}
+
+
+@router.post("/scheduled-actions/delete-pending")
+def delete_pending_actions(
+    conversation_id: UUID,
+    _: None = Depends(require_internal_secret),
+    db: Session = Depends(get_db),
+):
+    """Delete all pending scheduled actions for a conversation."""
+    result = (
+        db.query(ScheduledAction)
+        .filter(
+            ScheduledAction.conversation_id == conversation_id,
+            ScheduledAction.status == ScheduledActionStatus.PENDING
+        )
+        .delete()
+    )
+    db.commit()
+    return {"deleted": result}
 
 
 # ========================================
