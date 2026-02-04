@@ -517,67 +517,80 @@ def get_due_followups(
 ):
     """
     Fetch conversations due for follow-ups based on real-time evaluation.
-    Buckets: 10m, 180m (3h), 360m (6h).
+    Buckets:
+    - 10 minutes (1st follow-up)
+    - 180 minutes / 3 hours (2nd follow-up)
+    - 360 minutes / 6 hours (3rd follow-up)
     """
     now = datetime.now(timezone.utc)
-    
-    # Define buckets (minutes elapsed since last user message, required count)
+
+    # (min_elapsed, max_elapsed, followup_stage, required_followup_count)
     buckets = [
-        (10, 12, ConversationStage.FOLLOWUP_10M, 0),
-        (180, 182, ConversationStage.FOLLOWUP_3H, 1),
-        (360, 362, ConversationStage.FOLLOWUP_6H, 2)
+        (10, 20, ConversationStage.FOLLOWUP_10M, 0),
+        (180, 200, ConversationStage.FOLLOWUP_3H, 1),
+        (360, 400, ConversationStage.FOLLOWUP_6H, 2),
     ]
-    
-    results = []
-    
+
+    results: list[InternalDueFollowupOut] = []
+
     for min_m, max_m, stage, required_count in buckets:
         start_time = now - timedelta(minutes=max_m)
         end_time = now - timedelta(minutes=min_m)
-        
-        # Query conversations in this window
+
         due_convs = (
             db.query(Conversation, Lead, Organization, WhatsAppIntegration)
             .join(Lead, Conversation.lead_id == Lead.id)
             .join(Organization, Conversation.organization_id == Organization.id)
-            .join(WhatsAppIntegration, Organization.id == WhatsAppIntegration.organization_id)
+            .join(
+                WhatsAppIntegration,
+                Organization.id == WhatsAppIntegration.organization_id,
+            )
             .filter(
-                Conversation.last_user_message_at >= start_time,
-                Conversation.last_user_message_at < end_time,
-                # Sequence logic: must have sent fewer followups than this bucket requires
-                # Example: for the 180m bucket (3h), we expect 1 followup already sent (10m)
-                # If they missed the 10m one, count is 0, which is also < 2.
+                # Time window anchored to last bot message
+                Conversation.last_bot_message_at >= start_time,
+                Conversation.last_bot_message_at < end_time,
+
+                # Sequential follow-up enforcement
                 Conversation.followup_count_24h <= required_count,
-                # Safety: Only if bot hasn't replied to the LATEST user message yet
-                (Conversation.last_bot_message_at == None) | (Conversation.last_bot_message_at < Conversation.last_user_message_at),
+
+                # User has not replied after last bot message
+                Conversation.last_user_message_at < Conversation.last_bot_message_at,
+
+                # Bot-only, active conversations
                 Conversation.mode == ConversationMode.BOT,
-                Conversation.needs_human_attention == False,
+                Conversation.needs_human_attention.is_(False),
+
+                # Exclude terminal states
                 Conversation.stage.notin_([
-                    ConversationStage.CLOSED, 
-                    ConversationStage.LOST, 
-                    ConversationStage.GHOSTED
+                    ConversationStage.CLOSED,
+                    ConversationStage.LOST,
+                    ConversationStage.GHOSTED,
                 ]),
-                WhatsAppIntegration.is_connected == True
+
+                # WhatsApp must be connected
+                WhatsAppIntegration.is_connected.is_(True),
             )
             .all()
         )
-        
-        for conv, lead, org, integration in due_convs:
-            results.append(InternalDueFollowupOut(
-                followup_type=stage,
-                conversation=_conversation_to_schema(conv),
-                lead=_lead_to_schema(lead),
-                organization_id=org.id,
-                organization_name=org.name,
-                access_token=integration.access_token,
-                phone_number_id=integration.phone_number_id,
-                version=integration.version,
-                business_name=org.business_name,
-                business_description=org.business_description,
-                flow_prompt=org.flow_prompt,
-            ))
-            
-    return results
 
+        for conv, lead, org, integration in due_convs:
+            results.append(
+                InternalDueFollowupOut(
+                    followup_type=stage,
+                    conversation=_conversation_to_schema(conv),
+                    lead=_lead_to_schema(lead),
+                    organization_id=org.id,
+                    organization_name=org.name,
+                    access_token=integration.access_token,
+                    phone_number_id=integration.phone_number_id,
+                    version=integration.version,
+                    business_name=org.business_name,
+                    business_description=org.business_description,
+                    flow_prompt=org.flow_prompt,
+                )
+            )
+
+    return results
 
 # ========================================
 # Pipeline Event Endpoints
