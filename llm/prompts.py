@@ -70,6 +70,7 @@ Constraints:
 - Max {max_words} words
 - Max {questions_per_message} questions per message
 
+Respond with a JSON object containing your message.
 TODO: Full prompt implementation
 """
 
@@ -96,6 +97,7 @@ Write the message following the implementation plan.
 
 MEMORY_SYSTEM_PROMPT = """
 You are the Memory of a sales assistant. Your role is to compress and retain context.
+Respond with a JSON object containing the updated summary.
 TODO: Full prompt implementation
 """
 

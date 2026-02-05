@@ -19,7 +19,7 @@ def seed_db(clean=False):
             print("Cleaning all data using TRUNCATE CASCADE...")
             # Using raw SQL for TRUNCATE CASCADE to handle all relationships efficiently
             tables = [
-                "messages", "scheduled_actions", "conversation_events", 
+                "messages", "conversation_events", 
                 "conversations", "whatsapp_integrations", "ctas", 
                 "followups", "templates", "analytics", "audit_logs", 
                 "users", "leads", "organizations"
@@ -74,17 +74,16 @@ def seed_db(clean=False):
             organization_id=org.id,
             access_token="EAAG...",
             version="v18.0",
-            verify_token="verify_me",
             app_secret="app_secret_abc",
-            phone_number_id="123456789",
+            phone_number_id="123123",
             is_connected=True
         )
         db.add(integration)
 
         # 4. CTAs
         ctas = [
-            CTA(id=uuid.uuid4(), organization_id=org.id, name="Book Demo", cta_type="book_demo"),
-            CTA(id=uuid.uuid4(), organization_id=org.id, name="Book Meeting", cta_type="book_meeting")
+            CTA(id=uuid.uuid4(), organization_id=org.id, name="Book Demo"),
+            CTA(id=uuid.uuid4(), organization_id=org.id, name="Book Meeting")
         ]
         for cta in ctas:
             db.add(cta)
@@ -211,7 +210,7 @@ def only_clean_func():
         print("Cleaning all data using TRUNCATE CASCADE...")
         # Using raw SQL for TRUNCATE CASCADE to handle all relationships efficiently
         tables = [
-            "messages", "scheduled_actions", "conversation_events", 
+            "messages", "conversation_events", 
             "conversations", "whatsapp_integrations", "ctas", 
             "followups", "templates", "analytics", "audit_logs", 
             "users", "leads", "organizations"

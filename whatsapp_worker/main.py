@@ -270,10 +270,10 @@ def process_message(
             
             # Run summary generation
             new_summary = run_memory(
-                pipeline_context, 
+                context=pipeline_context, 
                 user_message=message_text,
-                bot_message=response_text or "",
-                classification=pipeline_result.classification
+                mouth_output=pipeline_result.mouth,
+                brain_output=pipeline_result.brain
             )
             
             # Update DB with new summary if generated

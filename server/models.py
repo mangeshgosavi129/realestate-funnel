@@ -73,10 +73,10 @@ class Conversation(Base):
 
     # === Sales State ===
     cta_scheduled_at = Column(DateTime(timezone=True), nullable=True)
-    stage = Column(SQLEnum(ConversationStage), nullable=False)
-    intent_level = Column(SQLEnum(IntentLevel), nullable=True)
-    mode = Column(SQLEnum(ConversationMode), nullable=False)
-    user_sentiment = Column(SQLEnum(UserSentiment), nullable=True)
+    stage = Column(SQLEnum(ConversationStage, native_enum=False), nullable=False)
+    intent_level = Column(SQLEnum(IntentLevel, native_enum=False), nullable=True)
+    mode = Column(SQLEnum(ConversationMode, native_enum=False), nullable=False)
+    user_sentiment = Column(SQLEnum(UserSentiment, native_enum=False), nullable=True)
     needs_human_attention = Column(Boolean, default=False)
     human_attention_resolved_at = Column(DateTime(timezone=True), nullable=True)
     
@@ -109,7 +109,7 @@ class Message(Base):
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False)
     lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id"), nullable=False)
-    message_from = Column(SQLEnum(MessageFrom), nullable=False)
+    message_from = Column(SQLEnum(MessageFrom, native_enum=False), nullable=False)
     assigned_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     content = Column(Text, nullable=False)
     status = Column(String(30), nullable=False, default="sent")
@@ -152,7 +152,7 @@ class Template(Base):
     
     content = Column(Text, nullable=True)         # Legacy field, keeping for compatibility but primary content is in components
 
-    status = Column(SQLEnum(TemplateStatus), default=TemplateStatus.DRAFT)
+    status = Column(SQLEnum(TemplateStatus, native_enum=False), default=TemplateStatus.DRAFT)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     rejection_reason = Column(Text, nullable=True)
     
@@ -193,9 +193,9 @@ class Lead(Base):
     email = Column(String, nullable=True)
     company = Column(String, nullable=True)
 
-    conversation_stage = Column(SQLEnum(ConversationStage), nullable=True)
-    intent_level = Column(SQLEnum(IntentLevel), nullable=True)
-    user_sentiment = Column(SQLEnum(UserSentiment), nullable=True)
+    conversation_stage = Column(SQLEnum(ConversationStage, native_enum=False), nullable=True)
+    intent_level = Column(SQLEnum(IntentLevel, native_enum=False), nullable=True)
+    user_sentiment = Column(SQLEnum(UserSentiment, native_enum=False), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
