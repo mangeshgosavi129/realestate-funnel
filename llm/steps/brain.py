@@ -23,7 +23,7 @@ def _format_messages(messages: list) -> str:
         return "No messages yet"
     
     lines = []
-    for msg in messages[-3:]:
+    for msg in messages:
         lines.append(f"[{msg.sender}] {msg.text}")
     return "\n".join(lines)
 
@@ -42,9 +42,9 @@ def _format_ctas(ctas: list) -> str:
 def _is_opening_message(context: PipelineInput) -> bool:
     """
     Check if this is an opening message (no relevant history).
-    History is considered empty if last_3_messages has 0 or 1 message.
+    History is considered empty if last_messages has 0 or 1 message.
     """
-    return not context.last_3_messages or (len(context.last_3_messages) <= 1 and not context.rolling_summary)
+    return not context.last_messages or (len(context.last_messages) <= 1 and not context.rolling_summary)
 
 
 def _build_user_prompt(context: PipelineInput, is_opening: bool) -> str:
@@ -55,7 +55,7 @@ def _build_user_prompt(context: PipelineInput, is_opening: bool) -> str:
     if not is_opening:
         history_section = BRAIN_USER_HISTORY_TEMPLATE.format(
             rolling_summary=context.rolling_summary or "No summary yet",
-            last_3_messages=_format_messages(context.last_3_messages)
+            last_messages=_format_messages(context.last_messages)
         )
     
     # 2. Build Full Prompt
@@ -81,7 +81,7 @@ def _validate_and_build_output(data: dict, context: PipelineInput) -> ClassifyOu
     
     # Prevent aggression/random jumps unless high confidence
     confidence = float(data.get("confidence", 0.5))
-    if confidence < 0.7 and llm_stage != context.conversation_stage:
+    if confidence < 0.4 and llm_stage != context.conversation_stage:
         logger.warning(f"Low confidence stage jump ({context.conversation_stage} -> {llm_stage}). Holding pos.")
         llm_stage = context.conversation_stage
 

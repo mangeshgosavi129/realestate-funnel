@@ -19,7 +19,8 @@ def _format_messages(messages: list) -> str:
         return "No messages yet"
     
     lines = []
-    for msg in messages[-3:]:
+    lines = []
+    for msg in messages:
         lines.append(f"[{msg.sender}] {msg.text}")
     return "\n".join(lines)
 
@@ -37,7 +38,7 @@ def _build_user_prompt(context: PipelineInput, classification: ClassifyOutput) -
     return MOUTH_USER_TEMPLATE.format(
         business_name=context.business_name,
         rolling_summary=context.rolling_summary or "No summary yet",
-        last_messages=_format_messages(context.last_3_messages),
+        last_messages=_format_messages(context.last_messages),
         decision_json=json.dumps(decision_compact),
         conversation_stage=context.conversation_stage.value,
     )

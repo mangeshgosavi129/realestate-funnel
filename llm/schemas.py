@@ -54,7 +54,7 @@ class PipelineInput(BaseModel):
     
     # Conversation context
     rolling_summary: str = ""
-    last_3_messages: List[MessageContext] = []
+    last_messages: List[MessageContext] = []
     
     # Current state
     conversation_stage: ConversationStage

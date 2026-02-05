@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def get_last_messages(
     conversation_id: UUID,
-    limit: int = 3
+    limit: int = 10
 ) -> List[MessageContext]:
     """
     Get last N messages for context via API.
@@ -82,7 +82,7 @@ def build_pipeline_context(
     conversation_id = UUID(conversation["id"])
     
     # Get last messages
-    last_messages = get_last_messages(conversation_id, limit=3)
+    last_messages = get_last_messages(conversation_id, limit=10)
     
     # Get current time in ISO format
     now = datetime.now(timezone.utc)
@@ -139,7 +139,7 @@ def build_pipeline_context(
         
         # Conversation context  
         rolling_summary=conversation.get("rolling_summary", ""),
-        last_3_messages=last_messages,
+        last_messages=last_messages,
         
         # Current state
         conversation_stage=stage,

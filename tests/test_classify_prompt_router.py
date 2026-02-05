@@ -21,40 +21,40 @@ def base_context():
 
 def test_opening_message_detection(base_context):
     # Case 1: Empty history
-    base_context.last_3_messages = []
+    base_context.last_messages = []
     base_context.rolling_summary = ""
     assert _is_opening_message(base_context) is True
 
     # Case 2: One message, no summary
-    base_context.last_3_messages = [MessageContext(sender="lead", text="Hi", timestamp="...")]
+    base_context.last_messages = [MessageContext(sender="lead", text="Hi", timestamp="...")]
     assert _is_opening_message(base_context) is True
 
     # Case 3: Multiple messages (Reply path)
-    base_context.last_3_messages = [
+    base_context.last_messages = [
         MessageContext(sender="lead", text="Hi", timestamp="..."),
         MessageContext(sender="bot", text="Hello!", timestamp="...")
     ]
     assert _is_opening_message(base_context) is False
 
     # Case 4: One message but with summary (Partial fail recovery / Long conversation)
-    base_context.last_3_messages = [MessageContext(sender="lead", text="Hi", timestamp="...")]
+    base_context.last_messages = [MessageContext(sender="lead", text="Hi", timestamp="...")]
     base_context.rolling_summary = "User previously asked about X."
     assert _is_opening_message(base_context) is False
 
 def test_opening_path_excludes_history(base_context):
-    base_context.last_3_messages = [MessageContext(sender="lead", text="Hi", timestamp="...")]
+    base_context.last_messages = [MessageContext(sender="lead", text="Hi", timestamp="...")]
     base_context.rolling_summary = ""
     
     prompt = _build_user_prompt(base_context, is_opening=True)
     
     assert "<history>\n\n</history>" in prompt
-    assert "Last 3 Messages:" not in prompt
+    assert "Last Messages:" not in prompt
     # Business context should also be excluded
     assert base_context.business_name not in prompt
     assert base_context.business_description not in prompt
 
 def test_reply_path_includes_history(base_context):
-    base_context.last_3_messages = [
+    base_context.last_messages = [
         MessageContext(sender="lead", text="Hi", timestamp="..."),
         MessageContext(sender="bot", text="Hello!", timestamp="...")
     ]
