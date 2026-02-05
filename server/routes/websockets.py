@@ -4,7 +4,7 @@ from server.dependencies import get_ws_auth_context, get_db
 from sqlalchemy.orm import Session
 from server.schemas import AuthContext
 from typing import Optional, Dict, Any
-import time
+import logging
 from server.services.websocket_events import WSEvents
 
 router = APIRouter()
@@ -15,8 +15,12 @@ async def websocket_endpoint(
     token: str = Query(...),
     db: Session = Depends(get_db)
 ):
+    logger = logging.getLogger("server")
+    logger.info(f"WebSocket connection attempt from {websocket.client.host}")
+
     auth: Optional[AuthContext] = await get_ws_auth_context(token, db)
     if auth is None:
+        logger.warning("WebSocket unauthorized connection attempt")
         await websocket.accept()
         await websocket.send_json({"error": "Unauthorized"})
         await websocket.close(code=1008)
@@ -24,6 +28,7 @@ async def websocket_endpoint(
 
     # Connect with both user_id and org_id
     await manager.connect(websocket, auth.user_id, auth.organization_id)
+    logger.info(f"WebSocket connected: User {auth.user_id}, Org {auth.organization_id}")
 
     try:
         # Let frontend know connection is ready
@@ -38,7 +43,8 @@ async def websocket_endpoint(
             await manager.handle_incoming(auth.user_id, data)
 
     except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected: User {auth.user_id}")
         manager.disconnect(websocket, auth.user_id, auth.organization_id)
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket, auth.user_id, auth.organization_id)

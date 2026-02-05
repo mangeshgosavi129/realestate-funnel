@@ -1,9 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from server.database import engine, Base
 from server.routes import router
 from sqlalchemy import inspect
 from logging_config import setup_logging
+import time
+import logging
+
+logger = logging.getLogger("server")
 
 # Configure logging
 setup_logging()
@@ -25,6 +29,30 @@ app.add_middleware(
     allow_methods=["*"],      # IMPORTANT - allows OPTIONS
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Calculate duration
+    duration = time.time() - start_time
+    
+    # Log details
+    log_msg = f"{request.method} {request.url.path} - Status: {response.status_code} - Time: {duration:.3f}s"
+    
+    if 200 <= response.status_code < 400:
+        logger.info(log_msg)
+    elif 400 <= response.status_code < 500:
+        logger.warning(log_msg)
+    else:
+        logger.error(log_msg)
+        
+    return response
+
 
 # Include API Router
 app.include_router(router)

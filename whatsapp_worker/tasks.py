@@ -46,12 +46,16 @@ def process_due_followups():
     
     This task runs every minute via Celery beat.
     """
+    logger.info("SCHEDULE: Starting process_due_followups check")
     try:
         # Get all conversations currently in a followup window
         due_followups = api_client.get_due_followups()
-        logger.info(f"Found {due_followups} due follow-ups")
+        
         if not due_followups:
+            logger.info("SCHEDULE: No due follow-ups found")
             return {"processed": 0}
+            
+        logger.info(f"SCHEDULE: Found {due_followups} due follow-ups")
         
         processed = 0
         errors = 0
@@ -64,10 +68,11 @@ def process_due_followups():
                 logger.error(f"Error processing realtime followup: {e}", exc_info=True)
                 errors += 1
         
+        logger.info(f"SCHEDULE: Completed. Processed: {processed}, Errors: {errors}")
         return {"processed": processed, "errors": errors}
         
     except Exception as e:
-        logger.error(f"process_due_followups error: {e}", exc_info=True)
+        logger.error(f"SCHEDULE: Critical error in process_due_followups: {e}", exc_info=True)
         return {"error": str(e)}
 
 

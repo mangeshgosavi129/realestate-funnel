@@ -61,14 +61,11 @@ def make_api_call(
     Returns:
         Parsed JSON response dict
     """
-    system_prompt = next((m["content"] for m in messages if m["role"] == "system"), "No system prompt")
-    user_prompt = next((m["content"] for m in messages if m["role"] == "user"), "No user prompt")
-
-    logger.info(f"--- {step_name} LLM CALL START ---")
-    logger.info(f"SYSTEM PROMPT:\n{system_prompt}")
-    logger.info(f"USER PROMPT:\n{user_prompt}")
-
+    llm_logger = logging.getLogger("llm")
     try:
+        # Log the request
+        llm_logger.info(f"[{step_name}] REQUEST:\n{json.dumps(messages, indent=2, ensure_ascii=False)}")
+
         kwargs = {
             "model": llm_config.model,
             "messages": messages,
@@ -81,9 +78,9 @@ def make_api_call(
 
         response = client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
-        
-        logger.info(f"RESPONSE:\n{content}")
-        logger.info(f"--- {step_name} LLM CALL END ---")
+
+        # Log the raw response
+        llm_logger.info(f"[{step_name}] RESPONSE:\n{content}")
 
         # Try direct JSON parse
         try:

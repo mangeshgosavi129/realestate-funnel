@@ -80,6 +80,7 @@ You have another important job which is to correctly raise the human_attention_n
 You must output a single valid JSON object. Valid JSON ONLY. No Markdown.
 
 {{
+  "implementation_plan": "<instructions on how to implement the response>",
   "thought_process": "Step-by-step reasoning: 1) User said X indicating Y intent. 2) Current stage is Z. 3) Rule A applies, so moving to stage B.",
   "situation_summary": "User wants [X] and is feeling [Y].",
   "intent_level": "low|medium|high|very_high|unknown",
