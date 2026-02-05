@@ -90,8 +90,8 @@ class ClassifyOutput(BaseModel):
     Consolidates Analysis and Decision making into one step.
     """
     # Analysis
-    thought_process: str = Field(..., max_length=300)
-    situation_summary: str = Field(..., max_length=200)
+    thought_process: str = Field(..., max_length=2000)
+    situation_summary: str = Field(..., max_length=1000)
     intent_level: IntentLevel
     user_sentiment: UserSentiment
     risk_flags: RiskFlags
@@ -139,7 +139,7 @@ class SummaryOutput(BaseModel):
     Output from Step 3: Summarize (Async).
     Updated rolling summary.
     """
-    updated_rolling_summary: str = Field(..., max_length=500)
+    updated_rolling_summary: str = Field(..., max_length=2000)
     needs_recursive_summary: bool = False  # If true, this summary is partial/queued
 
 
