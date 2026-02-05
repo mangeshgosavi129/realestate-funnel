@@ -1,135 +1,125 @@
 """
-Step 1: BRAIN - Analyze and Decide in one step.
+Step 2: BRAIN - Strategist.
+Makes decisions based on Eyes observation.
 """
 import logging
 import time
 from typing import Tuple
 from llm.api_helpers import make_api_call
-from llm.schemas import PipelineInput, ClassifyOutput, RiskFlags
-from llm.prompts import BRAIN_USER_TEMPLATE, BRAIN_USER_HISTORY_TEMPLATE
-from llm.prompts_registry import get_brain_system_prompt
-from llm.utils import normalize_enum, get_classify_schema, format_ctas
-from server.enums import (
-    ConversationStage, DecisionAction, IntentLevel, 
-    UserSentiment, RiskLevel
-)
+from llm.schemas import PipelineInput, EyesOutput, BrainOutput
+from llm.prompts import BRAIN_SYSTEM_PROMPT, BRAIN_USER_TEMPLATE
+from llm.utils import normalize_enum, format_ctas
+from server.enums import ConversationStage, DecisionAction
 
 logger = logging.getLogger(__name__)
 
 
-def _format_messages(messages: list) -> str:
-    """Format messages for prompt."""
-    if not messages:
-        return "No messages yet"
-    
-    lines = []
-    for msg in messages:
-        lines.append(f"[{msg.sender}] {msg.text}")
-    return "\n".join(lines)
+# JSON Schema for Brain output (inline)
+BRAIN_SCHEMA = {
+    "name": "brain_output",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "implementation_plan": {
+                "type": "string",
+                "description": "Concise instruction for Mouth on what to say"
+            },
+            "action": {
+                "type": "string",
+                "enum": ["send_now", "wait_schedule", "initiate_cta"]
+            },
+            "new_stage": {
+                "type": "string",
+                "enum": ["greeting", "qualification", "pricing", "cta", "followup", "closed", "lost", "ghosted"]
+            },
+            "should_respond": {
+                "type": "boolean"
+            },
+            "selected_cta_id": {
+                "type": ["string", "null"]
+            },
+            "cta_scheduled_at": {
+                "type": ["string", "null"]
+            },
+            "followup_in_minutes": {
+                "type": "integer"
+            },
+            "followup_reason": {
+                "type": "string"
+            },
+            "confidence": {
+                "type": "number"
+            },
+            "needs_human_attention": {
+                "type": "boolean"
+            }
+        },
+        "required": [
+            "implementation_plan", "action", "new_stage", "should_respond",
+            "selected_cta_id", "cta_scheduled_at", "followup_in_minutes",
+            "followup_reason", "confidence", "needs_human_attention"
+        ],
+        "additionalProperties": False
+    }
+}
 
 
-
-
-def _is_opening_message(context: PipelineInput) -> bool:
-    """
-    Check if this is an opening message (no relevant history).
-    History is considered empty if last_messages has 0 or 1 message.
-    """
-    return not context.last_messages or (len(context.last_messages) <= 1 and not context.rolling_summary)
-
-
-def _build_user_prompt(context: PipelineInput, is_opening: bool) -> str:
-    """Build the user prompt with context."""
-    
-    # 1. Format History Section (Only for replies)
-    history_section = ""
-    if not is_opening:
-        history_section = BRAIN_USER_HISTORY_TEMPLATE.format(
-            rolling_summary=context.rolling_summary or "No summary yet",
-            last_messages=_format_messages(context.last_messages)
-        )
-    
-    # 2. Build Full Prompt
+def _build_user_prompt(context: PipelineInput, eyes_output: EyesOutput) -> str:
+    """Build the user prompt with Eyes observation."""
     return BRAIN_USER_TEMPLATE.format(
-        history_section=history_section,
+        observation=eyes_output.observation,
         available_ctas=format_ctas(context.available_ctas),
-        conversation_stage=context.conversation_stage.value,
-        conversation_mode=context.conversation_mode,
-        intent_level=context.intent_level.value,
-        user_sentiment=context.user_sentiment.value,
-        active_cta_id=context.active_cta_id or "None",
+        followup_count_24h=context.nudges.followup_count_24h,
+        total_nudges=context.nudges.total_nudges,
         now_local=context.timing.now_local,
         whatsapp_window_open=context.timing.whatsapp_window_open,
-        followup_count_24h=context.nudges.followup_count_24h,
     )
 
 
-def _validate_and_build_output(data: dict, context: PipelineInput) -> ClassifyOutput:
+def _validate_and_build_output(data: dict, context: PipelineInput) -> BrainOutput:
     """Validate and build typed output from raw JSON."""
-    
-    # 1. New Stage Logic (Stickiness)
+    # Stage transition logic
     llm_stage = normalize_enum(data.get("new_stage"), ConversationStage, context.conversation_stage)
-    
-    # Prevent aggression/random jumps unless high confidence
     confidence = float(data.get("confidence", 0.5))
-    if confidence < 0.4 and llm_stage != context.conversation_stage:
-        logger.warning(f"Low confidence stage jump ({context.conversation_stage} -> {llm_stage}). Holding pos.")
-        llm_stage = context.conversation_stage
-
-    # 2. Risk Flags
-    rf = data.get("risk_flags", {})
-    risk_flags = RiskFlags(
-        spam_risk=RiskLevel(rf.get("spam_risk", "low")),
-        policy_risk=RiskLevel(rf.get("policy_risk", "low")),
-        hallucination_risk=RiskLevel(rf.get("hallucination_risk", "low")),
-    )
     
-    # 3. Action Logic
+    # Prevent low-confidence stage jumps
+    if confidence < 0.4 and llm_stage != context.conversation_stage:
+        logger.warning(f"Low confidence stage jump blocked: {context.conversation_stage} -> {llm_stage}")
+        llm_stage = context.conversation_stage
+    
     action = normalize_enum(data.get("action"), DecisionAction, DecisionAction.WAIT_SCHEDULE)
     
-    result = ClassifyOutput(
-        thought_process=data.get("thought_process", "No thought provided"),
-        situation_summary=data.get("situation_summary", ""),
-        intent_level=normalize_enum(data.get("intent_level"), IntentLevel, IntentLevel.UNKNOWN),
-        user_sentiment=normalize_enum(data.get("user_sentiment"), UserSentiment, UserSentiment.NEUTRAL),
-        risk_flags=risk_flags,
-        
+    return BrainOutput(
+        implementation_plan=data.get("implementation_plan", ""),
         action=action,
         new_stage=llm_stage,
         should_respond=data.get("should_respond", False),
-        
         selected_cta_id=data.get("selected_cta_id"),
         cta_scheduled_at=data.get("cta_scheduled_at"),
         followup_in_minutes=max(0, data.get("followup_in_minutes", 0)),
         followup_reason=data.get("followup_reason", ""),
-        
         confidence=confidence,
-        needs_human_attention=bool(data.get("needs_human_attention", False))
+        needs_human_attention=bool(data.get("needs_human_attention", False)),
     )
-    return result
 
 
-def run_brain(context: PipelineInput) -> Tuple[ClassifyOutput, int, int]:
+def run_brain(context: PipelineInput, eyes_output: EyesOutput) -> Tuple[BrainOutput, int, int]:
     """
     Run the Brain step.
+    Makes strategic decisions based on Eyes observation.
     """
-    is_opening = _is_opening_message(context)
-    user_prompt = _build_user_prompt(context, is_opening)
-    system_prompt = get_brain_system_prompt(
-        context.conversation_stage, 
-        is_opening, 
-        flow_prompt=context.flow_prompt
-    )
+    user_prompt = _build_user_prompt(context, eyes_output)
     
     start_time = time.time()
     
     try:
         data = make_api_call(
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": BRAIN_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_schema", "json_schema": get_classify_schema()},
+            response_format={"type": "json_schema", "json_schema": BRAIN_SCHEMA},
             temperature=0.3,
             step_name="Brain"
         )
@@ -139,21 +129,17 @@ def run_brain(context: PipelineInput) -> Tuple[ClassifyOutput, int, int]:
         
         logger.info(f"Brain: {output.action.value} -> {output.new_stage.value} (Conf: {output.confidence})")
         if output.needs_human_attention:
-            logger.info(f"🚨 Human attention flagged for conversation")
+            logger.info(f"🚨 Human attention flagged")
         
-        return output, latency_ms, 0 
+        return output, latency_ms, 0
         
     except Exception as e:
         logger.error(f"Brain failed: {e}")
-        fallback_output = ClassifyOutput(
-            thought_process="System error during classification. Falling back to safe state.",
-            situation_summary="Error",
-            intent_level=IntentLevel.UNKNOWN,
-            user_sentiment=UserSentiment.NEUTRAL,
-            risk_flags=RiskFlags(),
+        fallback_output = BrainOutput(
+            implementation_plan="System error. Send a polite acknowledgment.",
             action=DecisionAction.WAIT_SCHEDULE,
             new_stage=context.conversation_stage,
             should_respond=False,
-            confidence=0.0
+            confidence=0.0,
         )
         return fallback_output, int((time.time() - start_time) * 1000), 0

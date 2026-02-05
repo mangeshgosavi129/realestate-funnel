@@ -1,40 +1,55 @@
+"""
+Eyes → Brain → Mouth → Memory Pipeline.
+Orchestrates the 4-stage LLM pipeline.
+"""
 import logging
-from llm.schemas import PipelineInput, PipelineResult, ClassifyOutput
+from llm.schemas import PipelineInput, PipelineResult, BrainOutput, EyesOutput
+from llm.steps.eyes import run_eyes
 from llm.steps.brain import run_brain
 from llm.steps.mouth import run_mouth
 from server.enums import DecisionAction
 
 logger = logging.getLogger(__name__)
 
+
 def run_pipeline(context: PipelineInput, user_message: str) -> PipelineResult:
     """
-    Run the Brain-Mouth-Memory pipeline.
+    Run the Eyes → Brain → Mouth → Memory pipeline.
     
     Steps:
-    1. BRAIN: Analyze & Decide
-    2. MOUTH: Write Message (if Brain says so)
-    3. Return Result (Memory is backgrounded)
+    1. EYES: Observe and analyze
+    2. BRAIN: Decide and strategize
+    3. MOUTH: Communicate (if Brain says so)
+    4. MEMORY: Backgrounded (not in this call)
     """
     total_latency_ms = 0
     total_tokens = 0
     
     try:
         # ========================================
-        # Step 1: BRAIN
+        # Step 1: EYES
         # ========================================
-        logger.info("Running Step 1: Brain")
-        classification, latency, tokens = run_brain(context)
+        logger.info("Running Step 1: Eyes")
+        eyes_output, latency, tokens = run_eyes(context)
         total_latency_ms += latency
         total_tokens += tokens
         
         # ========================================
-        # Step 2: MOUTH
+        # Step 2: BRAIN
         # ========================================
-        response_output = None
+        logger.info("Running Step 2: Brain")
+        brain_output, latency, tokens = run_brain(context, eyes_output)
+        total_latency_ms += latency
+        total_tokens += tokens
         
-        if classification.should_respond:
-            logger.info(f"Running Step 2: Mouth - Action: {classification.action.value}")
-            response_output, latency, tokens = run_mouth(context, classification)
+        # ========================================
+        # Step 3: MOUTH
+        # ========================================
+        mouth_output = None
+        
+        if brain_output.should_respond:
+            logger.info(f"Running Step 3: Mouth - Action: {brain_output.action.value}")
+            mouth_output, latency, tokens = run_mouth(context, brain_output)
             total_latency_ms += latency
             total_tokens += tokens
         else:
@@ -44,52 +59,52 @@ def run_pipeline(context: PipelineInput, user_message: str) -> PipelineResult:
         # Build Result
         # ========================================
         result = PipelineResult(
-            classification=classification,
-            response=response_output,
-            summary=None, # To be filled by background worker
+            eyes=eyes_output,
+            brain=brain_output,
+            mouth=mouth_output,
+            memory=None,  # To be filled by background worker
             pipeline_latency_ms=total_latency_ms,
             total_tokens_used=total_tokens,
-            needs_background_summary=True # Signal to worker
+            needs_background_summary=True,  # Signal to worker
         )
         
-        logger.info(f"Pipeline Complete: {total_latency_ms}ms. Response: {bool(response_output)}")
+        logger.info(f"Pipeline Complete: {total_latency_ms}ms. Response: {bool(mouth_output)}")
         return result
 
     except Exception as e:
         logger.error(f"Pipeline Critical Error: {e}", exc_info=True)
-        return _get_emergency_result()
+        return _get_emergency_result(context)
 
 
-def _get_emergency_result() -> PipelineResult:
+def _get_emergency_result(context: PipelineInput) -> PipelineResult:
     """Catastrophic failure fallback."""
     from llm.schemas import RiskFlags
-    from server.enums import ConversationStage, IntentLevel, UserSentiment
+    from server.enums import IntentLevel, UserSentiment
     
-    # Return a safe, do-nothing result to keep worker alive
-    # We can't easily construct a full ClassifyOutput without imports here being messy, 
-    # but let's try to be clean.
-    
-    # Minimal valid classification
-    # We need to construct valid objects.
-    rf = RiskFlags()
-    
-    classify_fallback = ClassifyOutput(
-        thought_process="Critical Pipeline Failure",
-        situation_summary="System Error",
+    # Minimal valid Eyes output
+    eyes_fallback = EyesOutput(
+        observation="Critical Pipeline Failure",
+        thought_process="System Error",
+        situation_summary="Error",
         intent_level=IntentLevel.UNKNOWN,
         user_sentiment=UserSentiment.NEUTRAL,
-        risk_flags=rf,
-        action=DecisionAction.WAIT_SCHEDULE, # Safety default
-        new_stage=ConversationStage.GREETING, # We don't know the stage, but schema requires one. 
-        # Ideally we'd pass original stage but we don't have context here easily without passing it down.
-        # It's fine, the worker won't update DB if we handle it right.
+        risk_flags=RiskFlags(),
+        confidence=0.0,
+    )
+    
+    # Minimal valid Brain output
+    brain_fallback = BrainOutput(
+        implementation_plan="System Error - Do not respond",
+        action=DecisionAction.WAIT_SCHEDULE,
+        new_stage=context.conversation_stage,
         should_respond=False,
-        confidence=0.0
+        confidence=0.0,
     )
     
     return PipelineResult(
-        classification=classify_fallback,
-        needs_background_summary=False # Don't try to summarize garbage
+        eyes=eyes_fallback,
+        brain=brain_fallback,
+        needs_background_summary=False,  # Don't try to summarize garbage
     )
 
 

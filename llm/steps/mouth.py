@@ -1,18 +1,45 @@
 """
-Step 2: MOUTH - Write the response.
+Step 3: MOUTH - Communicator.
+Translates Brain's implementation plan into a message.
 """
-import json
 import logging
 import time
 from typing import Tuple, Optional
-from uuid import UUID
-from llm.schemas import PipelineInput, ClassifyOutput, GenerateOutput
-from llm.prompts import MOUTH_USER_TEMPLATE
-from llm.prompts_registry import get_mouth_system_prompt
 from llm.api_helpers import make_api_call
+from llm.schemas import PipelineInput, BrainOutput, MouthOutput
+from llm.prompts import MOUTH_SYSTEM_PROMPT, MOUTH_USER_TEMPLATE
 from llm.utils import format_ctas
 
 logger = logging.getLogger(__name__)
+
+
+# JSON Schema for Mouth output (inline)
+MOUTH_SCHEMA = {
+    "name": "mouth_output",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "message_text": {
+                "type": "string",
+                "description": "The message to send"
+            },
+            "message_language": {
+                "type": "string",
+                "description": "Language code"
+            },
+            "self_check_passed": {
+                "type": "boolean"
+            },
+            "violations": {
+                "type": "array",
+                "items": {"type": "string"}
+            }
+        },
+        "required": ["message_text", "message_language", "self_check_passed", "violations"],
+        "additionalProperties": False
+    }
+}
 
 
 def _format_messages(messages: list) -> str:
@@ -21,72 +48,51 @@ def _format_messages(messages: list) -> str:
         return "No messages yet"
     
     lines = []
-    lines = []
     for msg in messages:
         lines.append(f"[{msg.sender}] {msg.text}")
     return "\n".join(lines)
 
 
-def _build_user_prompt(context: PipelineInput, classification: ClassifyOutput) -> str:
-    """Build the user prompt with Brain decision."""
-    decision_compact = {
-        "action": classification.action.value,
-        "new_stage": classification.new_stage.value,
-        "thought": classification.thought_process, # Context for mouth
-        "selected_cta_id": str(classification.selected_cta_id) if classification.selected_cta_id else None,
-        "cta_scheduled_at": classification.cta_scheduled_at
-    }
-    
-    return MOUTH_USER_TEMPLATE.format(
-        business_name=context.business_name,
-        rolling_summary=context.rolling_summary or "No summary yet",
-        last_messages=_format_messages(context.last_messages),
-        available_ctas=format_ctas(context.available_ctas),
-        decision_json=json.dumps(decision_compact),
-        conversation_stage=context.conversation_stage.value,
-    )
-
-
-def _validate_and_build_output(data: dict, context: PipelineInput) -> GenerateOutput:
-    """Validate and build typed output from raw JSON."""
-    # Defensive parsing for selected_cta_id
-    raw_cta_id = data.get("selected_cta_id")
-    final_cta_id = None
-    
-    if raw_cta_id:
-        try:
-            # Handle if LLM returns it as string UUID or something else
-            final_cta_id = UUID(str(raw_cta_id))
-        except (ValueError, TypeError):
-            logger.warning(f"Mouth returned invalid UUID for selected_cta_id: {raw_cta_id}. Ignoring.")
-            final_cta_id = None
-
-    return GenerateOutput(
-        message_text=data.get("message_text", ""),
-        message_language=data.get("message_language", context.language_pref),
-        selected_cta_id=final_cta_id,
-        next_followup_in_minutes=max(0, data.get("next_followup_in_minutes", 0)),
-        self_check_passed=True, # Pro-forma for now
-        violations=[]
-    )
-
-def run_mouth(context: PipelineInput, classification: ClassifyOutput) -> Tuple[Optional[GenerateOutput], int, int]:
-    """
-    Run the Mouth step.
-    Only runs if classification.should_respond is True.
-    """
-    if not classification.should_respond:
-        return None, 0, 0
-    
-    system_prompt = get_mouth_system_prompt(
-        stage=classification.new_stage, # Use the NEW stage
+def _build_system_prompt(context: PipelineInput) -> str:
+    """Build system prompt with business context."""
+    return MOUTH_SYSTEM_PROMPT.format(
         business_name=context.business_name,
         business_description=context.business_description,
-        flow_prompt=context.flow_prompt,
-        max_words=context.max_words
+        max_words=context.max_words,
+        questions_per_message=context.questions_per_message,
     )
+
+
+def _build_user_prompt(context: PipelineInput, brain_output: BrainOutput) -> str:
+    """Build the user prompt with Brain's implementation plan."""
+    return MOUTH_USER_TEMPLATE.format(
+        implementation_plan=brain_output.implementation_plan,
+        business_name=context.business_name,
+        available_ctas=format_ctas(context.available_ctas),
+        last_messages=_format_messages(context.last_messages),
+    )
+
+
+def _validate_and_build_output(data: dict, context: PipelineInput) -> MouthOutput:
+    """Validate and build typed output from raw JSON."""
+    return MouthOutput(
+        message_text=data.get("message_text", ""),
+        message_language=data.get("message_language", context.language_pref),
+        self_check_passed=data.get("self_check_passed", True),
+        violations=data.get("violations", []),
+    )
+
+
+def run_mouth(context: PipelineInput, brain_output: BrainOutput) -> Tuple[Optional[MouthOutput], int, int]:
+    """
+    Run the Mouth step.
+    Only runs if brain_output.should_respond is True.
+    """
+    if not brain_output.should_respond:
+        return None, 0, 0
     
-    user_prompt = _build_user_prompt(context, classification)
+    system_prompt = _build_system_prompt(context)
+    user_prompt = _build_user_prompt(context, brain_output)
     
     start_time = time.time()
     
@@ -108,9 +114,8 @@ def run_mouth(context: PipelineInput, classification: ClassifyOutput) -> Tuple[O
         
     except Exception as e:
         logger.error(f"Mouth failed: {e}")
-        # SIMPLE FALLBACK: Maintain continuity without crashing
-        fallback_output = GenerateOutput(
+        fallback_output = MouthOutput(
             message_text="I'm sorry, I'm having a bit of trouble connecting. Could you please try again in a moment?",
-            message_language="en"
+            message_language="en",
         )
         return fallback_output, int((time.time() - start_time) * 1000), 0
