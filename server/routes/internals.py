@@ -348,9 +348,9 @@ def get_due_followups(
         (8, 12, ConversationStage.FOLLOWUP_10M, [
             ConversationStage.GREETING,
             ConversationStage.QUALIFICATION,
-            ConversationStage.PRICING 
-            ConversationStage.CTA 
-            ConversationStage.FOLLOWUP 
+            ConversationStage.PRICING,
+            ConversationStage.CTA,
+            ConversationStage.FOLLOWUP,
         ]),
         (170, 190, ConversationStage.FOLLOWUP_3H, [
             ConversationStage.FOLLOWUP_10M,
