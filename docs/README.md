@@ -1,186 +1,199 @@
-# WhatsApp Funnel AI: Router-Agent Architecture
+# WhatsApp Funnel AI: Eyes → Brain → Mouth → Memory Architecture
 
 ## 1. Project Overview
-This project is an **AI-Driven Sales Agent** designed for WhatsApp. It uses a **Router-Agent Architecture** to separate high-level decision-making (The Brain) from response generation (The Mouth).
+This project is an **AI-Driven Sales Agent** for WhatsApp using a **4-Stage Pipeline** that mimics human cognitive processing.
 
 ### Core Philosophy
-- **Intentionality**: The AI never "just talks". It analyzes, decides, and then acts.
-- **Micro-State Management**: Every conversation is tracked via explicit stages (`GREETING`, `QUALIFICATION`, `PRICING`, etc.).
-- **Context Isolation**: Prompt logic is split to prevent "Context Pollution" (e.g., preventing the bot from trying to "close a deal" when it should be "greeting").
-- **Self-Healing**: Automated background workers handle follow-ups and nudges if users (or the bot) go silent.
+- **Intentionality**: The AI never "just talks". It observes, strategizes, then communicates.
+- **Separation of Concerns**: Each stage has ONE job — Eyes observe, Brain decides, Mouth speaks, Memory remembers.
+- **Micro-State Management**: Conversations tracked via explicit stages (`GREETING`, `QUALIFICATION`, `PRICING`, etc.).
+- **Self-Healing**: Background workers handle follow-ups if users go silent.
 
 ---
 
-## 2. Architecture & Components
+## 2. The 4-Stage Pipeline
 
-The system is composed of 4 main pillars:
+```
+┌─────────────┐    observation    ┌─────────────┐    implementation_plan    ┌─────────────┐
+│    EYES     │ ───────────────► │    BRAIN    │ ─────────────────────────►│    MOUTH    │
+│  (Observer) │                   │ (Strategist)│                           │(Communicator)│
+└─────────────┘                   └─────────────┘                           └─────────────┘
+       │                                 │                                         │
+       │ intent, sentiment               │ action, stage                           │ message_text
+       │ risk_flags                      │ needs_human_attention                   │
+       ▼                                 ▼                                         ▼
+                                                                            ┌─────────────┐
+                                        ◄───────────────────────────────────│   MEMORY    │
+                                                                            │ (Archivist) │
+                                                                            └─────────────┘
+```
+
+### Stage Responsibilities
+
+| Stage | Role | Input | Output |
+|-------|------|-------|--------|
+| **Eyes** | Observe & Analyze | `PipelineInput` | `observation`, intent, sentiment, risks |
+| **Brain** | Decide & Strategize | Eyes observation | `implementation_plan`, action, stage, CTA |
+| **Mouth** | Communicate | Brain's plan | `message_text` |
+| **Memory** | Compress & Retain | Mouth's output | `updated_rolling_summary` |
+
+### Key Handoff: `implementation_plan`
+Brain passes a natural language instruction to Mouth:
+```
+"Send a friendly follow-up asking about their timeline. Mention the free consultation CTA."
+```
+
+---
+
+## 3. Architecture & Components
 
 ### A. The Server (`/server`)
-- **Framework**: FastAPI (Python).
-- **Role**: The "Source of Truth". Handles DB connections, API endpoints, Websockets, and Authentication.
-- **Database**: PostgreSQL (Stores Leads, Conversations, Messages, Configs).
-- **WebSockets**: Real-time updates for the frontend (Lead replies, Status changes).
+- **Framework**: FastAPI (Python)
+- **Role**: Source of Truth — DB, API endpoints, WebSockets, Auth
+- **Database**: PostgreSQL
 
 ### B. The Worker (`/whatsapp_worker`)
-- **Technique**: Celery + Redis (Async Processing).
-- **Role**: Stateless processor for high-volume WhatsApp messages.
-- **Flow**:
-  1.  Receives Webhook from Meta.
-  2.  Fetches Context (History, State) from Server API.
-  3.  Runs the **HTL Pipeline**.
-  4.  Sends Response via WhatsApp API.
-  5.  Persists state back to Server.
+- **Technique**: Celery + Redis
+- **Flow**: Webhook → Fetch Context → Run Pipeline → Send Response → Persist State
 
-### C. The Brain (`/llm`)
-- **Role**: The Application Logic / Intelligence Layer.
-- **Key Modules**:
-  - `pipeline.py`: Orchestrator (Classify -> Generate -> Summarize).
-  - `steps/classify.py`: **The Brain**. Decides Stage & Action.
-  - `steps/generate.py`: **The Mouth**. Writes the actual text.
-  - `prompts.py`: Transition Rules (Logic).
-  - `prompts_registry.py`: Behavioral Personas (Tone/Style).
+### C. The LLM Pipeline (`/llm`)
+| File | Purpose |
+|------|---------|
+| `pipeline.py` | Orchestrates Eyes → Brain → Mouth |
+| `prompts.py` | 8 prompts (4 SYSTEM + 4 USER_TEMPLATE) |
+| `schemas.py` | `EyesOutput`, `BrainOutput`, `MouthOutput`, `MemoryOutput`, `PipelineResult` |
+| `steps/eyes.py` | Observer — analyzes conversation |
+| `steps/brain.py` | Strategist — decides action |
+| `steps/mouth.py` | Communicator — generates message |
+| `steps/memory.py` | Archivist — updates rolling summary |
+| `utils.py` | Enum normalization, formatting |
 
 ### D. The Frontend (`/frontend`)
-- **Framework**: Next.js + React.
-- **Role**: Dashboard for humans to monitor, intervene, and configure the bot.
+- **Framework**: Next.js + React
+- **Role**: Dashboard for monitoring and intervention
 
 ---
 
-## 3. The HTL Pipeline (Human Thinking Layer)
+## 4. Pipeline Flow Example
 
-The "Human Thinking Layer" is the core AI logic. It mimics a human salesperson's thought process.
+**Scenario**: User asks about price during qualification.
 
-### Logical Data Flow (Example)
+### Step 1: EYES (Observer)
+```json
+{
+  "observation": "User asking about pricing. Shows buying intent. Ready for price discussion.",
+  "intent_level": "high",
+  "user_sentiment": "curious",
+  "confidence": 0.85
+}
+```
 
-**Scenario**: User asks specifically about price during the qualification phase.
+### Step 2: BRAIN (Strategist)
+```json
+{
+  "implementation_plan": "Provide pricing range based on 100 units. Ask about budget fit.",
+  "action": "send_now",
+  "new_stage": "pricing",
+  "should_respond": true
+}
+```
 
-#### Step 0: Input Context
-- **User Message**: "That sounds good, but how much does it cost?"
-- **Current State**: `stage=QUALIFICATION`, `sentiment=neutral`.
-- **History**: Bot asked "What volume do you need?" -> User answered "100 units".
+### Step 3: MOUTH (Communicator)
+```json
+{
+  "message_text": "For 100 units, pricing starts at $500/mo. Does that fit your budget?"
+}
+```
 
-#### Step 1: CLASSIFY (The Brain)
-*Analysis & Decision Phase*
-- **Input**:
-    - `CLASSIFY_BASE_INSTRUCTIONS` (World-Class Strategist Persona).
-    - `CLASSIFY_STAGE_INSTRUCTIONS[QUALIFICATION]` (Transition Rules).
-    - **Rule Check**: "TRANSITION OUT OF qualification → pricing: User asks about cost/price".
-- **LLM Output (JSON)**:
-  ```json
-  {
-    "thought_process": "User is asking for price. Qualification is sufficient for a range quote.",
-    "intent_level": "high",
-    "user_sentiment": "curious",
-    "new_stage": "PRICING",
-    "action": "send_now"
-  }
-  ```
-
-#### Step 2: GENERATE (The Mouth)
-*Execution Phase*
-- **Input**:
-    - **New Stage**: `PRICING` (This loads the specific `PRICING` behavioral prompt from `prompts_registry.py`).
-    - **Directive**: `GOAL: Communicate value. DO: Provide range/estimate.`
-    - **Brain's Thought**: "User is asking for price..."
-    - **Business Config**: "Pricing starts at $500/mo".
-- **LLM Output (JSON)**:
-  ```json
-  {
-    "message_text": "For 100 units, our pricing starts at approx $500/mo. Does that fit your budget?",
-    "message_language": "en"
-  }
-  ```
-
-#### Step 3: ACTION & SUMMARY
-- **Action**: Message sent to WhatsApp immediately (Low latency).
-- **State Update**: DB updated to `stage=PRICING`.
-- **Background Summary**: "User asked price for 100 units. Bot quoted $500 start range." added to rolling summary.
+### Step 4: MEMORY (Archivist)
+Updates rolling summary with the exchange.
 
 ---
 
-## 4. Key Directories & Files
+## 5. Key Files
 
-### `/llm` ( The Intelligence Core )
+### `/llm` (Intelligence Core)
 | File | Purpose |
 |------|---------|
-| `pipeline.py` | Main entry point (`run_pipeline`). Chains the steps. |
-| `prompts.py` | **LOGIC PROMPTS**. Contains the "Transition Rules" (Step 1). Defines *When* to move stages. |
-| `prompts_registry.py` | **BEHAVIOR PROMPTS**. Contains the "Personas" (Step 2). Defines *How* to speak at each stage. |
-| `steps/classify.py` | Python implementation of the Brain step. |
-| `steps/generate.py` | Python implementation of the Mouth step. |
+| `pipeline.py` | Entry point (`run_pipeline`) |
+| `prompts.py` | All 8 prompts (SYSTEM + USER_TEMPLATE) |
+| `schemas.py` | Pydantic schemas for all stages |
+| `steps/eyes.py` | Observer implementation |
+| `steps/brain.py` | Strategist implementation |
+| `steps/mouth.py` | Communicator implementation |
+| `steps/memory.py` | Archivist implementation |
 
-### `/server` ( The Backend )
+### `/server` (Backend)
 | File | Purpose |
 |------|---------|
-| `main.py` | FastAPI app entry point. |
-| `routes/internals.py` | **Internal API**. Used by the Worker to fetch/write DB data securely without direct DB access. |
-| `enums.py` | Shared definitions for `ConversationStage`, `IntentLevel`, etc. Critical for resolving LLM outputs. |
+| `main.py` | FastAPI entry point |
+| `routes/internals.py` | Internal API for Worker |
+| `enums.py` | `ConversationStage`, `IntentLevel`, `DecisionAction`, etc. |
 
-### `/whatsapp_worker` ( The Hands )
+### `/whatsapp_worker` (Hands)
 | File | Purpose |
 |------|---------|
-| `main.py` | Webhook receiver. Triggers pipeline. |
-| `processors/context.py` | Builds the `PipelineInput` object from API data. |
-| `processors/actions.py` | Handles side effects (DB updates, WebSocket events) *after* the pipeline runs. |
+| `main.py` | Webhook receiver |
+| `processors/context.py` | Builds `PipelineInput` |
+| `processors/actions.py` | Handles post-pipeline actions |
 
 ---
 
-## 5. Development Setup
+## 6. Development Setup
 
 ### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- PostgreSQL
-- Redis (for Celery)
-- Ngrok (for local webhook testing)
+- Python 3.10+, Node.js 18+, PostgreSQL, Redis
 
 ### Installation
-1.  **Python Environment**:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # or venv\Scripts\activate
-    pip install -r requirements.txt
-    ```
+```bash
+# Python
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-2.  **Environment Variables**:
-    Create `.env` based on `.env.example`.
-    - `OPENAI_API_KEY`: Required for LLM.
-    - `DATABASE_URL`: Postgres connection string.
-    - `INTERNAL_API_SECRET`: Shared secret between Server and Worker.
+# Environment
+cp .env.example .env
+# Edit .env with API keys, DATABASE_URL, etc.
+```
 
-3.  **Run Services**:
-    
-    **Terminal 1 (Server)**:
-    ```bash
-    uvicorn server.main:app --reload
-    ```
-    
-    **Terminal 2 (Worker)**:
-    ```bash
-    celery -A whatsapp_worker.celery_app worker --loglevel=info -P solo
-    ```
-    *(Note: `-P solo` is for Windows compatibility)*
+### Run Services
+```bash
+# Server
+uvicorn server.main:app --reload
 
-    **Terminal 3 (Frontend)**:
-    ```bash
-    cd frontend
-    npm install
-    npm run dev
-    ```
+# Worker
+celery -A whatsapp_worker.celery_app worker --loglevel=info -P solo
+
+# Frontend
+cd frontend && npm install && npm run dev
+```
+
+### Testing the Pipeline
+```bash
+# Interactive mode
+python tests/simulate_htl.py
+
+# Automated tests
+python tests/simulate_htl.py --test
+```
 
 ---
 
-## 6. Important Context for AI Agents
-If you are an AI assisting with this project, pay attention to:
+## 7. Important Context for AI Agents
 
-1.  **Prompt Separation**:
-    - **Never** put behavioral instructions (Tone, Style) in `prompts.py`. Put them in `prompts_registry.py`.
-    - **Never** put logic rules (IF/THEN transitions) in `prompts_registry.py`. Put them in `prompts.py`.
+1. **Stage Separation**:
+   - Eyes: Only observes (no decisions)
+   - Brain: Only decides (no message generation)
+   - Mouth: Only generates (follows Brain's `implementation_plan`)
+   - Memory: Only summarizes (runs after Mouth)
 
-2.  **Enum Synchronization**:
-    - If you change a Stage in `server/enums.py`, you **must** update:
-        - `CLASSIFY_STAGE_INSTRUCTIONS` in `llm/prompts.py`.
-        - `STAGE_INSTRUCTIONS` in `llm/prompts_registry.py`.
+2. **Prompt Structure**:
+   - 4 `*_SYSTEM_PROMPT` constants (static persona/rules)
+   - 4 `*_USER_TEMPLATE` constants (dynamic context injection)
+   - All in `llm/prompts.py`
 
-3.  **Internal API Pattern**:
-    - The Worker does not touch the DB. It calls `server/routes/internals.py`. If you need new data in the worker, add an Internal API route.
+3. **Enum Synchronization**:
+   - If you change `server/enums.py`, update the inline schemas in step files.
+
+4. **Internal API Pattern**:
+   - Worker doesn't touch DB directly — uses `server/routes/internals.py`.
