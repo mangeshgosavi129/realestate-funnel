@@ -1,19 +1,14 @@
 """
 Step 1: CLASSIFY (The Brain) - Analyze and Decide in one step.
 """
-import json
 import logging
 import time
 from typing import Tuple
-
-from openai import OpenAI
-
-from llm.config import llm_config
+from llm.api_helpers import make_api_call
 from llm.schemas import PipelineInput, ClassifyOutput, RiskFlags
 from llm.prompts import CLASSIFY_USER_TEMPLATE, HISTORY_SECTION_TEMPLATE
 from llm.prompts_registry import get_classify_system_prompt
 from llm.utils import normalize_enum, get_classify_schema
-from llm.api_helpers import llm_call_with_retry
 from server.enums import (
     ConversationStage, DecisionAction, IntentLevel, 
     UserSentiment, RiskLevel
@@ -133,32 +128,20 @@ def run_classify(context: PipelineInput) -> Tuple[ClassifyOutput, int, int]:
     """
     Run the Classify step (The Brain).
     """
-    client = OpenAI(
-        api_key=llm_config.api_key,
-        base_url=llm_config.base_url,
-    )
-    
     is_opening = _is_opening_message(context)
     user_prompt = _build_user_prompt(context, is_opening)
     system_prompt = get_classify_system_prompt(context.conversation_stage, is_opening)
     
     start_time = time.time()
     
-    def make_api_call():
-        return client.chat.completions.create(
-            model=llm_config.model,
+    try:
+        data = make_api_call(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_schema", "json_schema": get_classify_schema()},
-            temperature=0.3, # Low temp for decision making
-        )
-    
-    try:
-        data = llm_call_with_retry(
-            api_call=make_api_call,
-            max_retries=2,
+            temperature=0.3,
             step_name="Classify"
         )
         

@@ -66,7 +66,7 @@ DON'T:
 - Do not sell or pitch yet.
 - Do not say "How are you".
 
-OPENING SCRIPT (Use ONLY if no conversation history):
+Flow Prompt:
 "{flow_prompt}"
 """,
 
@@ -80,6 +80,8 @@ DO:
 DON'T:
 - Do not overwhelm with multiple questions.
 - Do not discuss price yet (unless requirements are fully clear).
+Flow Prompt:
+"{flow_prompt}"
 """,
 
     ConversationStage.PRICING: """
@@ -92,6 +94,8 @@ DO:
 DON'T:
 - Do not be defensive about price.
 - Do not drop price immediately without justifying value.
+Flow Prompt:
+"{flow_prompt}"
 """,
 
     ConversationStage.CTA: """
@@ -104,6 +108,8 @@ DO:
 DON'T:
 - Do not be vague ("let me know what you think").
 - Do not go back to qualifying unless new info appears.
+Flow Prompt:
+"{flow_prompt}"
 """,
 
     ConversationStage.FOLLOWUP: """
@@ -116,6 +122,8 @@ DO:
 DON'T:
 - Do not be aggressive or annoying.
 - Do not just say "bump" or "checking in" without context.
+Flow Prompt:
+"{flow_prompt}"
 """,
     
     ConversationStage.FOLLOWUP_10M: """
@@ -157,6 +165,8 @@ DO:
 - Thank them for their business/time.
 DON'T:
 - Do not upsell immediately after closing.
+Flow Prompt:
+"{flow_prompt}"
 """,
 
     ConversationStage.LOST: """
@@ -167,6 +177,8 @@ DO:
 - Leave a good final impression for future potential.
 DON'T:
 - Do not argue or try to overcome objections anymore.
+Flow Prompt:
+"{flow_prompt}"
 """,
 
     ConversationStage.GHOSTED: """
@@ -177,6 +189,8 @@ DO:
 - Assume they are still interested but busy.
 DON'T:
 - Do not reference the silence ("You haven't replied in days").
+Flow Prompt:
+"{flow_prompt}"
 """
 }
 

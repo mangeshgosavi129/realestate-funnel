@@ -5,17 +5,10 @@ import json
 import logging
 import time
 from typing import Tuple, Optional
-
-from openai import OpenAI
-
-from llm.config import llm_config
-from llm.schemas import (
-    PipelineInput, ClassifyOutput, GenerateOutput
-)
+from llm.schemas import PipelineInput, ClassifyOutput, GenerateOutput
 from llm.prompts import GENERATE_USER_TEMPLATE
 from llm.prompts_registry import get_system_prompt
-from llm.api_helpers import llm_call_with_retry
-from server.enums import ConversationStage
+from llm.api_helpers import make_api_call
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +63,6 @@ def run_generate(context: PipelineInput, classification: ClassifyOutput) -> Tupl
     if not classification.should_respond:
         return None, 0, 0
     
-    client = OpenAI(
-        api_key=llm_config.api_key,
-        base_url=llm_config.base_url,
-    )
-    
     # DYNAMIC SYSTEM PROMPT (The Fix)
     # Load instruction ONLY for the target stage determined by the Brain
     # Enriched with business context (The Mouth)
@@ -90,20 +78,13 @@ def run_generate(context: PipelineInput, classification: ClassifyOutput) -> Tupl
     
     start_time = time.time()
     
-    def make_api_call():
-        return client.chat.completions.create(
-            model=llm_config.model,
+    try:
+        data = make_api_call(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
-        )
-    
-    try:
-        data = llm_call_with_retry(
-            api_call=make_api_call,
-            max_retries=1, # Fast fail to fallback
             step_name="Generate"
         )
         
@@ -116,11 +97,10 @@ def run_generate(context: PipelineInput, classification: ClassifyOutput) -> Tupl
     except Exception as e:
         logger.error(f"Generate failed: {e}. Attempting Fallback.")
         # FALLBACK RETRY (Simple Prompt)
-        return _run_emergency_fallback(context, client)
+        return _run_emergency_fallback(context)
 
 
-
-def _run_emergency_fallback(context: PipelineInput, client: OpenAI) -> Tuple[Optional[GenerateOutput], int, int]:
+def _run_emergency_fallback(context: PipelineInput) -> Tuple[Optional[GenerateOutput], int, int]:
     """
     Emergency Retry: Strip all complexity, just ask for a polite response.
     """
@@ -137,14 +117,11 @@ def _run_emergency_fallback(context: PipelineInput, client: OpenAI) -> Tuple[Opt
         Output strictly JSON: {{"message_text": "..."}}
         """
         
-        response = client.chat.completions.create(
-            model=llm_config.model,
+        data = make_api_call(
             messages=[{"role": "user", "content": fallback_prompt}],
             response_format={"type": "json_object"},
+            step_name="Generate Fallback"
         )
-        
-        content = response.choices[0].message.content
-        data = json.loads(content)
         
         output = GenerateOutput(
             message_text=data.get("message_text", "I'm sorry, I'm having trouble connecting right now."),

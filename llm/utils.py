@@ -3,17 +3,9 @@ LLM Utilities for HTL Pipeline.
 Provides enum normalization, JSON schema generation, and defensive parsing.
 """
 import logging
-from typing import Type, TypeVar, Optional, Dict, Any, List
+from typing import Type, TypeVar, Optional, Dict, Any
 from enum import Enum
 from difflib import get_close_matches
-
-from server.enums import (
-    ConversationStage,
-    IntentLevel,
-    UserSentiment,
-    DecisionAction,
-    RiskLevel,
-)
 
 logger = logging.getLogger(__name__)
 

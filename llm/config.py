@@ -15,7 +15,7 @@ if env_path.exists():
     load_dotenv(dotenv_path=env_path, override=True)
 
 class LLMConfig:
-    def __init__(self):  
+    def __init__(self)-> None:  
         self.api_key=os.getenv("GROQ_API_KEY")
         self.model=os.getenv("LLM_MODEL")
         self.base_url=os.getenv("LLM_BASE_URL")

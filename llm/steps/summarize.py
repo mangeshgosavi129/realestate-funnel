@@ -2,18 +2,13 @@
 Step 3: SUMMARIZE (The Memory) - Background Process.
 Updates the rolling summary. Now robust against failures via recursive queuing.
 """
-import json
+
 import logging
 import time
 from typing import Tuple, Optional
-
-from openai import OpenAI
-
-from llm.config import llm_config
 from llm.schemas import PipelineInput, SummaryOutput, ClassifyOutput
 from llm.prompts import SUMMARIZE_SYSTEM_PROMPT, SUMMARIZE_USER_TEMPLATE
-from llm.api_helpers import llm_call_with_retry
-from whatsapp_worker.processors.api_client import api_client
+from llm.api_helpers import make_api_call
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +43,6 @@ def _run_summary_llm(
     classification: ClassifyOutput
 ) -> Tuple[SummaryOutput, int, int]:
     """Core LLM Logic"""
-    client = OpenAI(api_key=llm_config.api_key, base_url=llm_config.base_url)
-    
-    # Check for queued messages (Recursive Summary)
-    # real implementation would pull from DB "pending_summaries"
-    # For now, we assume context.rolling_summary might be stale if we failed before.
-    
     user_prompt = SUMMARIZE_USER_TEMPLATE.format(
         rolling_summary=context.rolling_summary or "No prior summary",
         user_message=user_message,
@@ -61,19 +50,16 @@ def _run_summary_llm(
     )
     
     start_time = time.time()
-    
-    def make_api_call():
-        return client.chat.completions.create(
-            model=llm_config.model,
-            messages=[
-                {"role": "system", "content": SUMMARIZE_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=1000, # Increased to prevent JSON cutoff
-        )
 
-    data = llm_call_with_retry(make_api_call, max_retries=2, step_name="Summarize")
+    data = make_api_call(
+        messages=[
+            {"role": "system", "content": SUMMARIZE_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        response_format={"type": "json_object"},
+        max_tokens=1000,
+        step_name="Summarize"
+    )
     
     summary_text = data.get("updated_rolling_summary", "")[:500]
     
