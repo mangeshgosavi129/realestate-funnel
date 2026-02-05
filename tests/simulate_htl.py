@@ -1,5 +1,9 @@
 import sys
 import os
+
+# Force UTF-8 encoding on Windows to prevent UnicodeEncodeError in logging
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 import asyncio
 import logging
 import time
@@ -51,8 +55,21 @@ class ColorFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
-# Configure logging
-handler = logging.StreamHandler()
+# Configure logging with UTF-8 encoding for Windows
+# CRITICAL: Must reconfigure stdout BEFORE creating any handlers
+import io
+if sys.platform == 'win32':
+    # Wrap stdout/stderr with UTF-8 encoding, replacing unencodable chars
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# Clear any existing handlers from root logger
+root_logger = logging.getLogger()
+for h in root_logger.handlers[:]:
+    root_logger.removeHandler(h)
+
+# Create handler AFTER stdout is reconfigured
+handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(ColorFormatter())
 logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 
@@ -60,13 +77,20 @@ logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("whatsapp_worker.main").setLevel(logging.CRITICAL)
-logging.getLogger("whatsapp_worker.processors.actions").setLevel(logging.DEBUG) 
+logging.getLogger("whatsapp_worker.processors.actions").setLevel(logging.DEBUG)
+
+# Disable LLM logger completely to prevent encoding errors
+# (we trace pipeline steps manually, so we don't need LLM request/response logs)
+llm_log = logging.getLogger("llm")
+llm_log.setLevel(logging.CRITICAL)  # Only log critical errors
+llm_log.handlers.clear()
+llm_log.propagate = False 
 
 from whatsapp_worker import main as worker_main
 from whatsapp_worker.processors.api_client import api_client
 from llm.schemas import EyesOutput, BrainOutput, MouthOutput
 from llm import pipeline
-from llm.steps import eyes, brain, mouth
+from llm.steps import eyes, brain, mouth, memory
 from llm.prompts import (
     EYES_SYSTEM_PROMPT, EYES_USER_TEMPLATE,
     BRAIN_SYSTEM_PROMPT, BRAIN_USER_TEMPLATE,
@@ -74,33 +98,48 @@ from llm.prompts import (
 )
 
 # ==========================================
-# 🕵️ MONKEY PATCHING FOR TRACING
+# MONKEY PATCHING FOR TRACING
 # ==========================================
+
+# Set to True to see full prompts/outputs without truncation
+VERBOSE = True
+
+def _safe_slice(text: str, max_len: int) -> str:
+    """Safely slice text with ellipsis if needed (only when not VERBOSE)."""
+    if not text:
+        return "(empty)"
+    if VERBOSE:
+        return text
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "..."
+
 
 original_run_eyes = eyes.run_eyes
 original_run_brain = brain.run_brain
 original_run_mouth = mouth.run_mouth
+original_run_memory = memory.run_memory
 
 
 def traced_run_eyes(context):
     start = time.time()
     
-    print(f"\n👁️ [THE EYES] (INPUT)")
-    print(f"   ► Stage: {context.conversation_stage.value}")
-    print(f"   ► Intent: {context.intent_level.value} | Sentiment: {context.user_sentiment.value}")
-    print(f"   ► Messages: {len(context.last_messages)}")
+    print(f"\n[EYES] (INPUT)")
+    print(f"   > Stage: {context.conversation_stage.value}")
+    print(f"   > Intent: {context.intent_level.value} | Sentiment: {context.user_sentiment.value}")
+    print(f"   > Messages: {len(context.last_messages)}")
     if context.last_messages:
-        for msg in context.last_messages[-3:]:  # Last 3 messages
-            print(f"      [{msg.sender}] {msg.text[:50]}...")
+        for msg in context.last_messages[-5:]:  # Last 5 messages when verbose
+            print(f"      [{msg.sender}] {_safe_slice(msg.text, 100)}")
         
     result, lat, tokens = original_run_eyes(context)
     duration = (time.time() - start) * 1000
     
-    print(f"\n👁️ [THE EYES] (OUTPUT) - {duration:.1f}ms")
-    print(f"   ├─ Observation: {result.observation[:200]}...")
-    print(f"   ├─ Intent: {result.intent_level.value} | Sentiment: {result.user_sentiment.value}")
-    print(f"   ├─ Risks: Spam={result.risk_flags.spam_risk.value} | Policy={result.risk_flags.policy_risk.value}")
-    print(f"   └─ Confidence: {result.confidence}")
+    print(f"\n[EYES] (OUTPUT) - {duration:.1f}ms")
+    print(f"   - Observation: {_safe_slice(result.observation, 200)}")
+    print(f"   - Intent: {result.intent_level.value} | Sentiment: {result.user_sentiment.value}")
+    print(f"   - Risks: Spam={result.risk_flags.spam_risk.value} | Policy={result.risk_flags.policy_risk.value}")
+    print(f"   - Confidence: {result.confidence}")
     
     return result, lat, tokens
 
@@ -108,20 +147,20 @@ def traced_run_eyes(context):
 def traced_run_brain(context, eyes_output):
     start = time.time()
     
-    print(f"\n🧠 [THE BRAIN] (INPUT)")
-    print(f"   ► Observation: {eyes_output.observation[:150]}...")
-    print(f"   ► Available CTAs: {len(context.available_ctas)}")
-    print(f"   ► Nudges 24h: {context.nudges.followup_count_24h}")
+    print(f"\n[BRAIN] (INPUT)")
+    print(f"   > Observation: {_safe_slice(eyes_output.observation, 150)}")
+    print(f"   > Available CTAs: {len(context.available_ctas)}")
+    print(f"   > Nudges 24h: {context.nudges.followup_count_24h}")
         
     result, lat, tokens = original_run_brain(context, eyes_output)
     duration = (time.time() - start) * 1000
     
-    print(f"\n🧠 [THE BRAIN] (OUTPUT) - {duration:.1f}ms")
-    print(f"   ├─ Implementation Plan: {result.implementation_plan[:150]}...")
-    print(f"   ├─ Action: {result.action.value} | Should Respond: {result.should_respond}")
-    print(f"   ├─ Stage -> {result.new_stage.value.upper()}")
-    print(f"   ├─ Followup: {result.followup_in_minutes}m | Reason: {result.followup_reason[:50] if result.followup_reason else 'N/A'}")
-    print(f"   └─ Human Attention: {result.needs_human_attention}")
+    print(f"\n[BRAIN] (OUTPUT) - {duration:.1f}ms")
+    print(f"   - Implementation Plan: {_safe_slice(result.implementation_plan, 150)}")
+    print(f"   - Action: {result.action.value} | Should Respond: {result.should_respond}")
+    print(f"   - Stage -> {result.new_stage.value.upper()}")
+    print(f"   - Followup: {result.followup_in_minutes}m | Reason: {_safe_slice(result.followup_reason, 50) if result.followup_reason else 'N/A'}")
+    print(f"   - Human Attention: {result.needs_human_attention}")
     
     return result, lat, tokens
 
@@ -129,31 +168,56 @@ def traced_run_brain(context, eyes_output):
 def traced_run_mouth(context, brain_output):
     start = time.time()
     
-    print(f"\n🗣️ [THE MOUTH] (INPUT)")
-    print(f"   ► Implementation Plan: {brain_output.implementation_plan[:150]}...")
-    print(f"   ► Max Words: {context.max_words}")
+    print(f"\n[MOUTH] (INPUT)")
+    print(f"   > Implementation Plan: {_safe_slice(brain_output.implementation_plan, 150)}")
+    print(f"   > Max Words: {context.max_words}")
     
     result, lat, tokens = original_run_mouth(context, brain_output)
     duration = (time.time() - start) * 1000
     
-    print(f"\n🗣️ [THE MOUTH] (OUTPUT) - {duration:.1f}ms")
+    print(f"\n[MOUTH] (OUTPUT) - {duration:.1f}ms")
     if result and result.message_text:
-        print(f"   ├─ Generated: \"{result.message_text}\"")
+        print(f"   - Generated: \"{result.message_text}\"")
     else:
-        print(f"   ├─ Generated: (No Text)")
+        print(f"   - Generated: (No Text)")
     
     if result:
-        print(f"   └─ Safety Check: {'Passed' if result.self_check_passed else 'FAILED'}")
+        print(f"   - Safety Check: {'Passed' if result.self_check_passed else 'FAILED'}")
         if result.violations:
             print(f"      Violations: {result.violations}")
     
     return result, lat, tokens
 
 
+def traced_run_memory(context, user_message, mouth_output, brain_output):
+    """Traced version of run_memory for simulation visibility."""
+    start = time.time()
+    
+    print(f"\n[MEMORY] (INPUT)")
+    print(f"   > Context Summary Len: {len(context.rolling_summary)} chars")
+    print(f"   > User Message: {_safe_slice(user_message, 80)}")
+    print(f"   > Action Taken: {brain_output.action.value}")
+    
+    result_summary = original_run_memory(context, user_message, mouth_output, brain_output)
+    duration = (time.time() - start) * 1000
+    
+    print(f"\n[MEMORY] (OUTPUT) - {duration:.1f}ms")
+    if result_summary:
+        print(f"   - New Summary: {_safe_slice(result_summary, 150)}")
+        print(f"   - Length: {len(result_summary)} chars")
+    else:
+        print(f"   - No new summary generated")
+    
+    return result_summary
+
+
 # Apply patches to pipeline module (where they're imported)
 pipeline.run_eyes = traced_run_eyes
 pipeline.run_brain = traced_run_brain
 pipeline.run_mouth = traced_run_mouth
+
+# Patch memory in the llm.steps.memory module (imported locally by worker)
+memory.run_memory = traced_run_memory
 
 # ==========================================
 # MOCK / PATCH SETTINGS
@@ -170,7 +234,7 @@ original_emit_human_attention = api_client.emit_human_attention
 
 def mocked_send_bot_message(organization_id, conversation_id, content, *args, **kwargs):
     """Isolated mock: logs and stores message in DB, but does NOT call real WhatsApp API."""
-    print(f"\n🤖 Bot: \"{content}\"")
+    print(f"\n[BOT]: \"{content}\"")
     TEST_STATE["last_bot_message"] = content
     
     try:
@@ -184,20 +248,20 @@ def mocked_send_bot_message(organization_id, conversation_id, content, *args, **
                 message_from="bot"
             )
     except Exception as e:
-        print(f"❌ Failed to store bot message in DB: {e}")
+        print(f"[ERROR] Failed to store bot message in DB: {e}")
 
     return {"status": "simulated_success"}
 
 
 def mocked_emit_human_attention(conversation_id, organization_id):
     """Calls REAL internal API to trigger WebSocket event for frontend visibility."""
-    print(f"\n🚨 [Simulation->Real] Human Attention Event for Conv {conversation_id}!")
+    print(f"\n[ALERT] Human Attention Event for Conv {conversation_id}!")
     TEST_STATE["human_attention_triggered"] = True
     
     try:
         return original_emit_human_attention(conversation_id, organization_id)
     except Exception as e:
-        print(f"❌ emit_human_attention failed: {e}")
+        print(f"[ERROR] emit_human_attention failed: {e}")
         return {"status": "error", "error": str(e)}
 
 
@@ -246,13 +310,13 @@ TEST_SCENARIOS = [
 # ==========================================
 
 def run_test_scenarios(phone_id, user_phone, user_name):
-    print(f"\n🧪 Running {len(TEST_SCENARIOS)} Test Scenarios...")
+    print(f"\n[TEST] Running {len(TEST_SCENARIOS)} Test Scenarios...")
     print("===========================================")
     
     passed = 0
     
     for i, scenario in enumerate(TEST_SCENARIOS):
-        print(f"\n🔸 Scenario {i+1}: {scenario['name']}")
+        print(f"\n[{i+1}] Scenario: {scenario['name']}")
         print(f"   Input: \"{scenario['input']}\"")
         
         TEST_STATE["human_attention_triggered"] = False
@@ -292,10 +356,10 @@ def run_test_scenarios(phone_id, user_phone, user_name):
                  failures.append("Human Attention Event NOT executed")
 
         if not failures:
-            print(f"   ✅ PASS ({duration:.1f}ms)")
+            print(f"   [PASS] ({duration:.1f}ms)")
             passed += 1
         else:
-            print(f"   ❌ FAIL ({duration:.1f}ms)")
+            print(f"   [FAIL] ({duration:.1f}ms)")
             for f in failures:
                 print(f"      - {f}")
                 
@@ -305,8 +369,8 @@ def run_test_scenarios(phone_id, user_phone, user_name):
 
 
 def run_simulation(args):
-    print("\n🚀 Eyes → Brain → Mouth Pipeline Simulator")
-    print("==========================================")
+    print("\n=== Eyes -> Brain -> Mouth Pipeline Simulator ===")
+    print("==================================================")
     
     phone_id = "123123"
     sender_phone = "919999999999" 
@@ -321,20 +385,20 @@ def run_simulation(args):
     sender_phone = input(f"Enter User Phone [Default: {sender_phone}]: ").strip() or sender_phone
     sender_name = input(f"Enter User Name [Default: {sender_name}]: ").strip() or sender_name
     
-    print(f"\n✅ Session: {sender_name} ({sender_phone})")
+    print(f"\n[OK] Session: {sender_name} ({sender_phone})")
     print("Type 'quit' to exit.\n")
     
     while True:
         try:
             print("-" * 60)
-            user_input = input(f"👤 {sender_name}: ").strip()
+            user_input = input(f"{sender_name}: ").strip()
             if user_input.lower() in ['quit', 'exit']:
                 break
             
             if not user_input:
                 continue
                 
-            print("\n⏳ Processing...")
+            print("\nProcessing...")
             start_total = time.time()
             
             TEST_STATE["human_attention_triggered"] = False
@@ -347,21 +411,21 @@ def run_simulation(args):
             )
             
             total_duration = (time.time() - start_total) * 1000
-            print(f"\n⏱️ Total End-to-End Latency: {total_duration:.1f}ms")
+            print(f"\nTotal End-to-End Latency: {total_duration:.1f}ms")
             
             if status_code != 200:
-                print(f"⚠️ Error {status_code}: {result}")
+                print(f"[WARNING] Error {status_code}: {result}")
             
             if "action" in result and result["action"] != "send_now":
-                print(f"ℹ️ System Action: {result.get('action')} (No reply sent)")
+                print(f"[INFO] System Action: {result.get('action')} (No reply sent)")
             
             if TEST_STATE["human_attention_triggered"]:
-                print("🚨 [VERIFIED] Human Attention WebSocket Triggered")
+                print("[VERIFIED] Human Attention WebSocket Triggered")
                 
         except KeyboardInterrupt:
             break
         except Exception as e:
-            print(f"❌ Exception: {e}")
+            print(f"[ERROR] Exception: {e}")
             import traceback
             traceback.print_exc()
 

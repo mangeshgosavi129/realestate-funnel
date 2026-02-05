@@ -47,10 +47,12 @@ def handle_pipeline_result(
             updates["stage"] = recommended_stage
     
     # Reflect Intent & Sentiment
-    if classification.intent_level:
-        updates["intent_level"] = classification.intent_level.value
-    if classification.user_sentiment:
-        updates["user_sentiment"] = classification.user_sentiment.value
+    # Reflect Intent & Sentiment (from Eyes)
+    if result.eyes:
+        if result.eyes.intent_level:
+            updates["intent_level"] = result.eyes.intent_level.value
+        if result.eyes.user_sentiment:
+            updates["user_sentiment"] = result.eyes.user_sentiment.value
 
     # Check for human attention flag (INDEPENDENT - can happen with any action)
     if result.should_escalate:
@@ -60,8 +62,8 @@ def handle_pipeline_result(
     # Collect CTA fields (INDEPENDENT - CTA can be triggered even when sending a message)
     # e.g., "Let's book a call!" message + CTA initiation
     selected_cta_id = classification.selected_cta_id
-    if result.response and result.response.selected_cta_id:
-        selected_cta_id = result.response.selected_cta_id
+    # Note: MouthOutput (response) does not carry selected_cta_id in current schema.
+    # relying on BrainOutput (classification) is correct.
         
     if selected_cta_id:
         updates["cta_id"] = str(selected_cta_id)

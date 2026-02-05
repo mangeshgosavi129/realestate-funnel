@@ -7,6 +7,8 @@ from openai import OpenAI
 from llm.config import llm_config
 
 logger = logging.getLogger(__name__)
+logging.getLogger("llm").disabled = True
+logging.getLogger("llm.api_helpers").disabled = True
 
 # Initialize single OpenAI client
 client = OpenAI(
@@ -62,9 +64,20 @@ def make_api_call(
         Parsed JSON response dict
     """
     llm_logger = logging.getLogger("llm")
+
+    # Set to True to see full prompts in terminal
+    DEBUG_PROMPTS = True
+
     try:
-        # Log the request
-        llm_logger.info(f"[{step_name}] REQUEST:\n{json.dumps(messages, indent=2, ensure_ascii=False)}")
+        # Print full request for debugging
+        if DEBUG_PROMPTS:
+            print(f"\n{'='*60}")
+            print(f"[{step_name}] REQUEST")
+            print(f"{'='*60}")
+            for msg in messages:
+                print(f"--- {msg['role'].upper()} ---")
+                print(msg['content'])
+            print(f"{'='*60}\n")
 
         kwargs = {
             "model": llm_config.model,
@@ -79,8 +92,13 @@ def make_api_call(
         response = client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
 
-        # Log the raw response
-        llm_logger.info(f"[{step_name}] RESPONSE:\n{content}")
+        # Print full response for debugging
+        if DEBUG_PROMPTS:
+            print(f"\n{'='*60}")
+            print(f"[{step_name}] RESPONSE")
+            print(f"{'='*60}")
+            print(content)
+            print(f"{'='*60}\n")
 
         # Try direct JSON parse
         try:
@@ -89,11 +107,13 @@ def make_api_call(
             # Try extraction from text
             extracted = extract_json_from_text(content)
             if extracted:
+                print(f"{step_name}: Extracted JSON from text response")
                 logger.info(f"{step_name}: Extracted JSON from text response")
                 return extracted
             raise ValueError(f"{step_name}: Could not parse JSON from response: {content[:100]}...")
             
     except Exception as e:
+        print(f"[LLM ERROR] {step_name}: {e}")
         logger.error(f"{step_name} API call failed: {e}")
         raise
 
