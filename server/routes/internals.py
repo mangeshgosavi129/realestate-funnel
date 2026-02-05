@@ -390,7 +390,7 @@ def get_conversation_messages(
         )
         result.append(InternalMessageContext(
             sender=sender,
-            text=msg.content[:500],
+            text=msg.content,
             timestamp=msg.created_at.isoformat() if msg.created_at else "",
         ))
     return result
@@ -484,7 +484,7 @@ async def store_outgoing_message(
     db.add(message)
 
     # Update conversation timestamps
-    conv.last_message = payload.content[:500]
+    conv.last_message = payload.content
     conv.last_message_at = now
     conv.last_bot_message_at = now
 

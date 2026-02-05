@@ -58,7 +58,7 @@ def _run_memory_llm(
         step_name="Memory"
     )
     
-    summary_text = data.get("updated_rolling_summary", "")[:500]
+    summary_text = data.get("updated_rolling_summary", "")
     
     # Save to Schema
     output = SummaryOutput(

@@ -30,7 +30,7 @@ def _build_user_prompt(context: PipelineInput, classification: ClassifyOutput) -
     decision_compact = {
         "action": classification.action.value,
         "new_stage": classification.new_stage.value,
-        "thought": classification.thought_process[:100], # Context for mouth
+        "thought": classification.thought_process, # Context for mouth
         "selected_cta_id": str(classification.selected_cta_id) if classification.selected_cta_id else None,
         "cta_scheduled_at": classification.cta_scheduled_at
     }

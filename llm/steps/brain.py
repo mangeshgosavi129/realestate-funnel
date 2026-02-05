@@ -97,8 +97,8 @@ def _validate_and_build_output(data: dict, context: PipelineInput) -> ClassifyOu
     action = normalize_enum(data.get("action"), DecisionAction, DecisionAction.WAIT_SCHEDULE)
     
     result = ClassifyOutput(
-        thought_process=data.get("thought_process", "No thought provided")[:300],
-        situation_summary=data.get("situation_summary", "")[:200],
+        thought_process=data.get("thought_process", "No thought provided"),
+        situation_summary=data.get("situation_summary", ""),
         intent_level=normalize_enum(data.get("intent_level"), IntentLevel, IntentLevel.UNKNOWN),
         user_sentiment=normalize_enum(data.get("user_sentiment"), UserSentiment, UserSentiment.NEUTRAL),
         risk_flags=risk_flags,
