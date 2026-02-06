@@ -5,7 +5,7 @@ Provides enum normalization and prompt formatting.
 import logging
 from typing import Type, TypeVar, Optional
 from enum import Enum
-from difflib import get_close_matches
+from rapidfuzz import process, fuzz
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def normalize_enum(
     log_corrections: bool = True
 ) -> Optional[T]:
     """
-    Safely convert a string to an enum with fuzzy matching.
+    Safely convert a string to an enum with fuzzy matching (using rapidfuzz).
     
     Handles cases like:
     - "qualifying" -> ConversationStage.QUALIFICATION
@@ -77,17 +77,23 @@ def normalize_enum(
     if normalized in valid_values:
         return valid_values[normalized]
     
-    # Try fuzzy matching with lower cutoff
-    close_matches = get_close_matches(normalized, valid_values.keys(), n=1, cutoff=0.6)
+    # Try fuzzy matching with rapidfuzz
+    # score_cutoff=60 is roughly equivalent to difflib cutoff=0.6
+    match = process.extractOne(
+        normalized, 
+        valid_values.keys(), 
+        scorer=fuzz.WRatio, 
+        score_cutoff=60
+    )
     
-    if close_matches:
-        matched_value = close_matches[0]
+    if match:
+        matched_value, score, _ = match
         result = valid_values[matched_value]
         
         if log_corrections:
             logger.warning(
                 f"Enum correction: '{value}' → '{result.value}' "
-                f"(class={enum_class.__name__})"
+                f"(score={score:.1f}, class={enum_class.__name__})"
             )
         return result
     

@@ -55,10 +55,19 @@ def make_api_call(
     response_format: Optional[Dict[str, Any]] = None,
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
-    step_name: str = "LLM"
+    step_name: str = "LLM",
+    strict: bool = False
 ) -> Dict[str, Any]:
     """
-    Execute LLM API call without retries.
+    Execute LLM API call.
+    
+    Args:
+        messages: List of message dicts
+        response_format: JSON schema for output
+        temperature: Sampling temperature
+        max_tokens: Max tokens to generate
+        step_name: Name of step for logging
+        strict: If True, enforces strict JSON schema adherence (Groq specific)
     
     Returns:
         Parsed JSON response dict
@@ -84,8 +93,16 @@ def make_api_call(
             "messages": messages,
             "temperature": temperature,
         }
+        
         if response_format:
+            # GROQ SPECIFIC: Enable key ordering and strict mode if requested
+            if strict:
+                # Ensure json_schema structure is correct for Groq
+                if "json_schema" in response_format:
+                     response_format["json_schema"]["strict"] = True
+            
             kwargs["response_format"] = response_format
+            
         if max_tokens:
             kwargs["max_tokens"] = max_tokens
 
@@ -99,16 +116,19 @@ def make_api_call(
             print(f"{'='*60}")
             print(content)
             print(f"{'='*60}\n")
+        
+        # If strict mode was used, we can trust the JSON
+        if strict:
+            return json.loads(content)
 
-        # Try direct JSON parse
+        # Fallback logic for non-strict mode
         try:
             return json.loads(content)
         except json.JSONDecodeError:
             # Try extraction from text
             extracted = extract_json_from_text(content)
             if extracted:
-                print(f"{step_name}: Extracted JSON from text response")
-                logger.info(f"{step_name}: Extracted JSON from text response")
+                logger.warning(f"{step_name}: Invalid JSON, but successfully extracted from text fallback.")
                 return extracted
             raise ValueError(f"{step_name}: Could not parse JSON from response: {content[:100]}...")
             

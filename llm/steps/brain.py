@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # JSON Schema for Brain output (inline)
 BRAIN_SCHEMA = {
     "name": "brain_output",
-    "strict": True,
+    "strict": False,
     "schema": {
         "type": "object",
         "properties": {
@@ -27,7 +27,7 @@ BRAIN_SCHEMA = {
             },
             "action": {
                 "type": "string",
-                "enum": ["send_now", "wait_schedule", "initiate_cta"]
+                "enum": ["send_now", "wait_schedule", "flag_attention", "initiate_cta"]
             },
             "new_stage": {
                 "type": "string",
@@ -71,6 +71,8 @@ def _build_user_prompt(context: PipelineInput, eyes_output: EyesOutput) -> str:
         observation=eyes_output.observation,
         available_ctas=format_ctas(context.available_ctas),
         followup_count_24h=context.nudges.followup_count_24h,
+        business_description=context.business_description,
+        flow_prompt=context.flow_prompt,
         total_nudges=context.nudges.total_nudges,
         now_local=context.timing.now_local,
         whatsapp_window_open=context.timing.whatsapp_window_open,
@@ -121,7 +123,8 @@ def run_brain(context: PipelineInput, eyes_output: EyesOutput) -> Tuple[BrainOut
             ],
             response_format={"type": "json_schema", "json_schema": BRAIN_SCHEMA},
             temperature=0.3,
-            step_name="Brain"
+            step_name="Brain",
+            strict=False
         )
         
         latency_ms = int((time.time() - start_time) * 1000)

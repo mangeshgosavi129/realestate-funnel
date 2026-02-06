@@ -102,8 +102,9 @@ def run_mouth(context: PipelineInput, brain_output: BrainOutput) -> Tuple[Option
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_object"},
-            step_name="Mouth"
+            response_format={"type": "json_schema", "json_schema": MOUTH_SCHEMA},
+            step_name="Mouth",
+            strict=True
         )
         
         latency_ms = int((time.time() - start_time) * 1000)

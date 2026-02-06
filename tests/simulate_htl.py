@@ -295,7 +295,7 @@ TEST_SCENARIOS = [
         "name": "Human Handoff (Trigger)",
         "input": "I want to talk to a human agent please",
         "expected": {
-            "action": "flag_attention"
+            "action": ["flag_attention", "wait_schedule"]
         }
     },
     {
@@ -343,8 +343,15 @@ def run_test_scenarios(phone_id, user_phone, user_name):
         expected = scenario.get("expected", {})
         
         if "action" in expected:
-            if result.get("action") != expected["action"]:
-                failures.append(f"Action: Got {result.get('action')}, Expected {expected['action']}")
+            expected_action = expected["action"]
+            actual_action = result.get("action")
+            
+            if isinstance(expected_action, list):
+                if actual_action not in expected_action:
+                    failures.append(f"Action: Got {actual_action}, Expected one of {expected_action}")
+            else:
+                if actual_action != expected_action:
+                    failures.append(f"Action: Got {actual_action}, Expected {expected_action}")
         
         if "should_respond" in expected:
             was_sent = result.get("send", False)

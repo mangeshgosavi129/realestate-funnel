@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # JSON Schema for Memory output (inline)
 MEMORY_SCHEMA = {
     "name": "memory_output",
-    "strict": True,
+    "strict": False,
     "schema": {
         "type": "object",
         "properties": {
@@ -79,9 +79,10 @@ def _run_memory_llm(
             {"role": "system", "content": MEMORY_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        response_format={"type": "json_object"},
-        max_tokens=1000,
-        step_name="Memory"
+        response_format={"type": "json_schema", "json_schema": MEMORY_SCHEMA},
+        max_tokens=2000,
+        step_name="Memory",
+        strict=False
     )
     
     output = MemoryOutput(

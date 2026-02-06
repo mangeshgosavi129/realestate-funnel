@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # JSON Schema for Eyes output (inline, no get_schema function)
 EYES_SCHEMA = {
     "name": "eyes_output",
-    "strict": True,
+    "strict": False,
     "schema": {
         "type": "object",
         "properties": {
@@ -82,6 +82,8 @@ def _build_user_prompt(context: PipelineInput) -> str:
         conversation_stage=context.conversation_stage.value,
         intent_level=context.intent_level.value,
         user_sentiment=context.user_sentiment.value,
+        business_description=context.business_description,
+        flow_prompt=context.flow_prompt,
         now_local=context.timing.now_local,
         whatsapp_window_open=context.timing.whatsapp_window_open,
         last_messages=_format_messages(context.last_messages),
@@ -125,7 +127,8 @@ def run_eyes(context: PipelineInput) -> Tuple[EyesOutput, int, int]:
             ],
             response_format={"type": "json_schema", "json_schema": EYES_SCHEMA},
             temperature=0.3,
-            step_name="Eyes"
+            step_name="Eyes",
+            strict=False
         )
         
         latency_ms = int((time.time() - start_time) * 1000)
